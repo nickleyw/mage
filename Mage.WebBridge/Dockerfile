@@ -20,5 +20,4 @@ USER xmage
 WORKDIR /data
 ENV PORT=8080
 EXPOSE 8080
-VOLUME ["/data"]
 ENTRYPOINT ["/opt/xmage/docker-entrypoint.sh"]

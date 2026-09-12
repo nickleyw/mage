@@ -1,5 +1,8 @@
 .git
 **/target
+# XMage has a real Java source package named mage/target; keep it in the image.
+!Mage/src/main/java/mage/target/
+!Mage/src/main/java/mage/target/**
 **/db
 **/saved
 **/gamelogs

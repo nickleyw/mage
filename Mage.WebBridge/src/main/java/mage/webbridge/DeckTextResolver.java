@@ -3,10 +3,6 @@ package mage.webbridge;
 import mage.cards.decks.CardNameUtil;
 import mage.cards.decks.DeckCardInfo;
 import mage.cards.decks.DeckCardLists;
-import mage.cards.repository.CardInfo;
-import mage.cards.repository.CardRepository;
-import mage.cards.repository.CardScanner;
-import mage.cards.repository.RepositoryUtil;
 import mage.view.SimpleCardView;
 
 import java.util.ArrayList;
@@ -33,15 +29,12 @@ final class DeckTextResolver {
     private static final Set<String> IGNORE_HEADINGS = new LinkedHashSet<>(
             Arrays.asList("maybeboard", "maybe board", "considering", "tokens"));
 
-    private final Object databaseLock = new Object();
-    private volatile boolean databaseReady;
+    private final CardIndex cardIndex = new CardIndex();
 
     Result resolve(String deckName, String text) {
         if (text == null || text.trim().isEmpty()) {
             throw new IllegalArgumentException("Decklist text is required.");
         }
-        ensureDatabase();
-
         DeckCardLists deck = new DeckCardLists();
         deck.setName(deckName == null || deckName.trim().isEmpty() ? "Web deck" : deckName.trim());
 
@@ -94,7 +87,7 @@ final class DeckTextResolver {
             }
 
             String cardName = cleanCardName(matcher.group(2));
-            CardInfo card = CardRepository.instance.findPreferredCoreExpansionCard(cardName);
+            CardIndex.Printing card = cardIndex.find(cardName);
             if (card == null) {
                 unresolved.put(cardName, unresolved.containsKey(cardName)
                         ? unresolved.get(cardName) + quantity : quantity);
@@ -104,7 +97,7 @@ final class DeckTextResolver {
             List<DeckCardInfo> target = sideboardLine || section == Section.SIDEBOARD
                     ? deck.getSideboard() : deck.getCards();
             for (int copy = 0; copy < quantity; copy++) {
-                target.add(new DeckCardInfo(card.getName(), card.getCardNumber(), card.getSetCode()));
+                target.add(new DeckCardInfo(card.name, card.cardNumber, card.setCode));
             }
             if (target == deck.getSideboard()) {
                 sideboardCount += quantity;
@@ -116,13 +109,12 @@ final class DeckTextResolver {
     }
 
     DeckCardInfo resolveCard(SimpleCardView card) {
-        ensureDatabase();
-        CardInfo info = CardRepository.instance.findCard(card.getExpansionSetCode(), card.getCardNumber());
-        if (info == null) {
-            throw new IllegalArgumentException("Card from XMage was not found locally: "
+        CardIndex.Printing printing = cardIndex.find(card.getExpansionSetCode(), card.getCardNumber());
+        if (printing == null) {
+            throw new IllegalArgumentException("Card from XMage was not found in the bundled index: "
                     + card.getExpansionSetCode() + " " + card.getCardNumber());
         }
-        return new DeckCardInfo(info.getName(), card.getCardNumber(), card.getExpansionSetCode());
+        return new DeckCardInfo(printing.name, card.getCardNumber(), card.getExpansionSetCode());
     }
 
     private String cleanCardName(String value) {
@@ -135,22 +127,6 @@ final class DeckTextResolver {
             name = name.replace("//", " // ");
         }
         return name.replaceFirst("(?<=[^/])\\s*/\\s*(?=[^/])", " // ");
-    }
-
-    private void ensureDatabase() {
-        if (databaseReady) {
-            return;
-        }
-        synchronized (databaseLock) {
-            if (databaseReady) {
-                return;
-            }
-            RepositoryUtil.bootstrapLocalDb();
-            if (RepositoryUtil.isDatabaseEmpty()) {
-                CardScanner.scan();
-            }
-            databaseReady = true;
-        }
     }
 
     private enum Section { MAIN, SIDEBOARD, IGNORE }
@@ -187,7 +163,7 @@ final class DeckTextResolver {
             result.put("unresolved", unresolved);
             result.put("skipped", skipped);
             result.put("canJoin", canJoin());
-            result.put("databaseReady", true);
+            result.put("cardIndexReady", true);
             return result;
         }
     }

@@ -16,8 +16,8 @@ The module currently:
 - accepts pasted lists and uploaded text/XMage deck files;
 - imports public Archidekt, Moxfield, and MTGTop8 deck links through allowlisted
   provider adapters;
-- resolves card names through XMage's own local card database and reports cards
-  that are unavailable in the matching XMage build;
+- resolves card names through a compact printing index generated from the
+  matching XMage build and reports unavailable cards;
 - joins and leaves ordinary match and tournament tables using the selected deck;
 - acknowledges XMage's standard game-start handshake and reduces live game
   updates into a browser-safe battlefield, hand, stack, player, and prompt view;
@@ -127,9 +127,9 @@ the bridge process running and supplies HTTPS; an active XMage session remains
 connected only while that process stays online.
 
 The repository now includes a production-style container definition and a
-Render Blueprint. The container requires `XMAGE_BRIDGE_TOKEN`, listens on the
-hosting provider's `PORT`, and stores XMage's generated card database under
-`/data`. See [DEPLOYMENT.md](DEPLOYMENT.md) for local and hosted launch steps.
+Render Blueprint. The container requires `XMAGE_BRIDGE_TOKEN` and listens on
+the hosting provider's `PORT`. See [DEPLOYMENT.md](DEPLOYMENT.md) for local and
+hosted launch steps.
 
 ## Browser API
 
@@ -158,10 +158,10 @@ Decks saved in the interface remain in that browser's local storage. This makes
 the initial library private and account-free. Cloud sync/export can be layered
 on later without making it a prerequisite for playing.
 
-The first deck check initializes XMage's local card database and can take about
-a minute on a small machine. Later checks reuse that database. The web bridge
-depends on `Mage.Sets` so its card names and printings match the protocol version
-it reports to the server.
+The bundled card index is generated from the same XMage revision, so deck-name
+resolution does not require compiling or loading all 32,000-plus card classes
+on the hosting service. This keeps free-tier builds and runtime memory practical
+while retaining version-matched card names, set codes, and collector numbers.
 
 Direct public-link import is verified for Archidekt and MTGTop8. Moxfield's
 undocumented export endpoint currently rejects bridge requests, so the interface

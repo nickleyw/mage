@@ -893,11 +893,13 @@ async function refresh() {
 
 form.addEventListener('submit', async event => {
   event.preventDefault();
+  // Capture the values before setStatus('connecting') disables the form.
+  // Disabled controls are intentionally omitted by FormData.
+  const data = new FormData(form);
   setStatus('connecting');
   message.className = '';
   message.textContent = 'Opening the standard XMage connection…';
   streamEvents();
-  const data = new FormData(form);
   try {
     const snapshot = await api('/api/session/connect', {
       method: 'POST',

@@ -1,0 +1,13 @@
+.git
+**/target
+**/db
+**/saved
+**/gamelogs
+**/gamelogsJson
+**/gamesHistory
+Mage.Client/plugins/images
+Mage.Client/plugins/plugin.data
+deploy
+temp
+*.log
+*.zip

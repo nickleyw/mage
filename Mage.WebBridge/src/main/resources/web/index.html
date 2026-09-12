@@ -1,0 +1,238 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#171a1f">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="XMage">
+  <title>XMage for iPad</title>
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" href="/app-icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <p class="eyebrow">Web bridge prototype</p>
+      <h1>XMage <span>for iPad</span></h1>
+    </div>
+    <div class="status-pill" id="status-pill" data-state="disconnected">
+      <span class="status-dot"></span><span id="status-label">Disconnected</span>
+    </div>
+  </header>
+
+  <main>
+    <section class="panel connect-panel" aria-labelledby="connect-title">
+      <div class="section-heading">
+        <div>
+          <p class="step">Step 1</p>
+          <h2 id="connect-title">Connect to XMage</h2>
+        </div>
+        <button id="disconnect-button" class="button quiet" type="button" hidden>Disconnect</button>
+      </div>
+
+      <form id="connect-form">
+        <div class="field wide">
+          <label for="host">Server address</label>
+          <input id="host" name="host" inputmode="url" autocapitalize="none" autocomplete="url"
+                 placeholder="Your friend’s public host or IP" required>
+        </div>
+        <div class="field port-field">
+          <label for="port">Port</label>
+          <input id="port" name="port" type="number" inputmode="numeric" min="1" max="65535" value="17171" required>
+        </div>
+        <div class="field">
+          <label for="username">XMage username</label>
+          <input id="username" name="username" autocapitalize="none" autocomplete="username"
+                 minlength="3" maxlength="14" pattern="[a-z0-9_]+" title="Lowercase letters, numbers, and underscores only" required>
+        </div>
+        <div class="field">
+          <label for="password">XMage password <span>if required</span></label>
+          <input id="password" name="password" type="password" autocomplete="current-password">
+        </div>
+        <details class="advanced wide">
+          <summary>Bridge access</summary>
+          <div class="field">
+            <label for="access-token">Access token <span>for a remotely hosted bridge</span></label>
+            <input id="access-token" name="accessToken" type="password" autocomplete="current-password">
+            <label class="remember-token"><input id="remember-token" type="checkbox" checked> Remember on this device</label>
+          </div>
+        </details>
+        <div class="form-actions wide">
+          <p id="form-message" role="status">Your friend uses their normal XMage client and server.</p>
+          <button class="button primary" id="connect-button" type="submit">Connect</button>
+        </div>
+      </form>
+    </section>
+
+    <section class="panel decks-panel" aria-labelledby="decks-title">
+      <div class="section-heading">
+        <div>
+          <p class="step">Step 2</p>
+          <h2 id="decks-title">Your decks</h2>
+        </div>
+        <button id="add-deck-button" class="button primary compact" type="button">Import deck</button>
+      </div>
+      <div class="deck-toolbar">
+        <label class="search-field" for="deck-search">
+          <span>Search decks</span>
+          <input id="deck-search" type="search" placeholder="Name or source">
+        </label>
+        <div class="selected-deck">
+          <p id="selected-deck-label">No deck selected</p>
+          <button id="validate-deck-button" class="button quiet" type="button" disabled>Check for XMage</button>
+        </div>
+      </div>
+      <p id="deck-readiness" class="deck-readiness" role="status"></p>
+      <div id="deck-empty" class="empty-state compact-empty">
+        <div class="empty-mark" aria-hidden="true">▤</div>
+        <h3>Bring your deck library</h3>
+        <p>Paste a list, upload a deck file, or import a public Archidekt, Moxfield, or MTGTop8 link.</p>
+      </div>
+      <div id="deck-list" class="deck-list" aria-live="polite"></div>
+    </section>
+
+    <section class="panel lobby-panel" aria-labelledby="lobby-title">
+      <div class="section-heading">
+        <div>
+          <p class="step">Step 3</p>
+          <h2 id="lobby-title">Lobby</h2>
+        </div>
+        <button id="refresh-button" class="button quiet" type="button">Refresh</button>
+      </div>
+      <p id="lobby-message" class="lobby-message" role="status">Select a deck, then join any open constructed table.</p>
+      <div id="lobby-empty" class="empty-state">
+        <div class="empty-mark" aria-hidden="true">⌁</div>
+        <h3>Connect to see tables</h3>
+        <p>Available games on the XMage server will appear here.</p>
+      </div>
+      <div id="table-list" class="table-list" aria-live="polite"></div>
+    </section>
+
+    <section id="game-panel" class="panel game-panel" aria-labelledby="game-title" hidden>
+      <div class="section-heading game-heading">
+        <div>
+          <p class="step">Live game</p>
+          <h2 id="game-title">Battlefield</h2>
+        </div>
+        <div class="turn-badge">
+          <strong id="game-turn">Starting</strong>
+          <span id="game-step"></span>
+        </div>
+      </div>
+      <details class="game-menu">
+        <summary>Game options</summary>
+        <button id="concede-button" class="button danger compact" type="button">Concede this game</button>
+      </details>
+      <div id="game-prompt" class="game-prompt" hidden></div>
+      <div id="player-boards" class="player-boards"></div>
+      <div class="personal-zones">
+        <section class="zone hand-zone">
+          <div class="zone-heading"><h3>Your hand</h3><span id="hand-count">0 cards</span></div>
+          <div id="hand-cards" class="game-cards"></div>
+        </section>
+        <section class="zone stack-zone">
+          <div class="zone-heading"><h3>Stack</h3><span id="stack-count">Empty</span></div>
+          <div id="stack-cards" class="game-cards"></div>
+        </section>
+      </div>
+    </section>
+
+    <section id="sideboard-panel" class="panel sideboard-panel" aria-labelledby="sideboard-title" hidden>
+      <div class="section-heading game-heading">
+        <div>
+          <p class="step">Between games</p>
+          <h2 id="sideboard-title">Sideboard</h2>
+        </div>
+        <div class="turn-badge">
+          <strong id="sideboard-time">Waiting</strong>
+          <span>remaining</span>
+        </div>
+      </div>
+      <p id="sideboard-message" class="lobby-message">Tap a card to move one copy between your main deck and sideboard.</p>
+      <div class="sideboard-zones">
+        <section class="zone">
+          <div class="zone-heading"><h3>Main deck</h3><span id="sideboard-main-count">0 cards</span></div>
+          <div id="sideboard-main" class="sideboard-list"></div>
+        </section>
+        <section class="zone">
+          <div class="zone-heading"><h3>Sideboard</h3><span id="sideboard-side-count">0 cards</span></div>
+          <div id="sideboard-side" class="sideboard-list"></div>
+        </section>
+      </div>
+      <div class="sideboard-submit">
+        <p id="sideboard-changes">No changes yet.</p>
+        <button id="sideboard-submit-button" class="button primary" type="button">Submit deck</button>
+      </div>
+    </section>
+
+    <section class="panel activity-panel" aria-labelledby="activity-title">
+      <div class="section-heading">
+        <div>
+          <p class="step">Connection detail</p>
+          <h2 id="activity-title">Live activity</h2>
+        </div>
+        <button id="clear-button" class="button quiet" type="button">Clear</button>
+      </div>
+      <ol id="activity-list" class="activity-list" aria-live="polite">
+        <li><time>Now</time><span>Bridge interface ready</span></li>
+      </ol>
+    </section>
+  </main>
+
+  <footer>
+    <p>Early compatibility build · Deck library and standard XMage table joining</p>
+    <details class="install-note">
+      <summary>Install on iPad</summary>
+      <p>Open the hosted HTTPS address in Safari, tap Share, then Add to Home Screen.</p>
+    </details>
+  </footer>
+
+  <dialog id="deck-dialog" class="deck-dialog">
+    <form id="deck-form" method="dialog">
+      <div class="dialog-heading">
+        <div>
+          <p class="step">Deck library</p>
+          <h2 id="deck-dialog-title">Import a deck</h2>
+        </div>
+        <button id="close-deck-dialog" class="icon-button" type="button" aria-label="Close">×</button>
+      </div>
+
+      <div class="url-import">
+        <div class="field">
+          <label for="deck-url">Public deck link</label>
+          <input id="deck-url" type="url" inputmode="url" autocapitalize="none"
+                 placeholder="Archidekt, Moxfield, or MTGTop8 URL">
+        </div>
+        <button id="fetch-deck-button" class="button quiet" type="button">Import link</button>
+      </div>
+      <p class="provider-note">Public links only. Moxfield may require Export → Copy; paste that list below.</p>
+
+      <div class="import-divider"><span>or</span></div>
+      <label class="file-button button quiet" for="deck-file">Choose a deck file</label>
+      <input id="deck-file" type="file" accept=".txt,.dck,.dec,.dek,.mwdeck,.mtga,text/plain" hidden>
+
+      <div class="field">
+        <label for="deck-name">Deck name</label>
+        <input id="deck-name" maxlength="80" placeholder="For example, Legacy Goblins" required>
+      </div>
+      <div class="field">
+        <label for="deck-text">Decklist</label>
+        <textarea id="deck-text" rows="13" spellcheck="false"
+                  placeholder="4 Goblin Lackey&#10;4 Aether Vial&#10;…&#10;&#10;Sideboard&#10;2 Pyrokinesis" required></textarea>
+      </div>
+      <div id="deck-preview" class="deck-preview">Paste a list to preview its card counts.</div>
+      <div class="dialog-actions">
+        <button id="delete-deck-button" class="button danger" type="button" hidden>Delete deck</button>
+        <span></span>
+        <button id="cancel-deck-button" class="button quiet" type="button">Cancel</button>
+        <button class="button primary" type="submit">Save deck</button>
+      </div>
+    </form>
+  </dialog>
+  <script src="/app.js"></script>
+</body>
+</html>

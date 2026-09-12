@@ -2,6 +2,7 @@ services:
   - type: web
     name: xmage-ipad-bridge
     runtime: docker
+    plan: free
     dockerfilePath: ./Mage.WebBridge/Dockerfile
     dockerContext: .
     healthCheckPath: /api/health
@@ -9,8 +10,4 @@ services:
       - key: XMAGE_BRIDGE_TOKEN
         generateValue: true
       - key: JAVA_OPTS
-        value: -Xms256m -Xmx1536m
-    disk:
-      name: xmage-card-data
-      mountPath: /data
-      sizeGB: 1
+        value: -Xms64m -Xmx384m -XX:MaxMetaspaceSize=96m -XX:+UseSerialGC

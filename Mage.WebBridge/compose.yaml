@@ -8,9 +8,4 @@ services:
       JAVA_OPTS: -Xms256m -Xmx1536m
     ports:
       - "8080:8080"
-    volumes:
-      - xmage-card-data:/data
     restart: unless-stopped
-
-volumes:
-  xmage-card-data:

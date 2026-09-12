@@ -18,8 +18,8 @@ docker compose -f Mage.WebBridge/compose.yaml up --build
 ```
 
 Open `http://localhost:8080`, expand **Bridge access**, and enter the same access
-token. The first deck validation builds XMage's local card database and can take
-a minute or two. Later launches reuse the `xmage-card-data` volume.
+token. Deck validation uses the compact, version-matched card index bundled in
+the bridge.
 
 ## Give it an HTTPS URL
 
@@ -35,11 +35,10 @@ this branch is available in a Git repository:
    server. The app can remember the bridge token on that device.
 6. In Safari, use **Share → Add to Home Screen**.
 
-The free configuration is intended for initial testing. It has no persistent
-disk, so a restart loses the generated card database and the first deck
-validation rebuilds it. A sleeping or restarting instance also disconnects the
-current XMage session. The reduced 384 MB Java heap passed bridge startup and
-deck-validation tests, but a complete match remains the practical memory test.
+The free configuration is intended for initial testing. A sleeping or
+restarting instance disconnects the current XMage session. The reduced 384 MB
+Java heap passed bridge startup and deck-validation tests, but a complete match
+remains the practical memory test.
 Upgrade to an always-on instance if free-tier sleeping or memory limits disrupt
 games.
 

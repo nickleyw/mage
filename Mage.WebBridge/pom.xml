@@ -22,7 +22,7 @@
         </dependency>
         <dependency>
             <groupId>${project.groupId}</groupId>
-            <artifactId>mage-sets</artifactId>
+            <artifactId>mage</artifactId>
             <version>${project.version}</version>
         </dependency>
         <dependency>

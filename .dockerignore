@@ -4,6 +4,9 @@
 !Mage/src/main/java/mage/target/
 !Mage/src/main/java/mage/target/**
 **/db
+# Mage.Common also has a legitimate Java source package named mage/db.
+!Mage.Common/src/main/java/mage/db/
+!Mage.Common/src/main/java/mage/db/**
 **/saved
 **/gamelogs
 **/gamelogsJson

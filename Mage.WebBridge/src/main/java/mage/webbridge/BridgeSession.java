@@ -499,25 +499,29 @@ final class BridgeSession implements MageClient {
             default: throw new IllegalArgumentException("Unsupported practice format: " + requestedFormat);
         }
 
-        boolean aiAvailable = false;
+        PlayerType aiType = null;
         PlayerType[] playerTypes = session.getPlayerTypes();
         if (playerTypes != null) {
             for (PlayerType type : playerTypes) {
-                if (type == PlayerType.COMPUTER_MAD) {
-                    aiAvailable = true;
-                    break;
+                if (type != null && type.isAI() && type.isWorkablePlayer()) {
+                    if (aiType == null || type == PlayerType.COMPUTER_MAD) {
+                        aiType = type;
+                    }
+                    if (type == PlayerType.COMPUTER_MAD) {
+                        break;
+                    }
                 }
             }
         }
-        if (!aiAvailable) {
-            throw new IllegalStateException("This XMage server does not offer the standard AI player.");
+        if (aiType == null) {
+            throw new IllegalStateException("This XMage server has not enabled a playable AI seat. Try another server or play a constructed table against a person.");
         }
 
         UUID roomId = session.getMainRoomId();
         String password = "practice-" + UUID.randomUUID();
         MatchOptions options = new MatchOptions("Private practice · " + username, gameType, false);
         options.getPlayerTypes().add(PlayerType.HUMAN);
-        options.getPlayerTypes().add(PlayerType.COMPUTER_MAD);
+        options.getPlayerTypes().add(aiType);
         options.setDeckType(deckType);
         options.setAttackOption(MultiplayerAttackOption.LEFT);
         options.setRange(RangeOfInfluence.ALL);
@@ -545,7 +549,7 @@ final class BridgeSession implements MageClient {
             if (!session.joinTable(roomId, tableId, username, PlayerType.HUMAN, 1, playerDeck.deck(), password)) {
                 throw new IllegalStateException("XMage could not seat you at the practice table.");
             }
-            if (!session.joinTable(roomId, tableId, "Practice Bot", PlayerType.COMPUTER_MAD, 1,
+            if (!session.joinTable(roomId, tableId, "Practice Bot", aiType, 1,
                     opponentDeck.deck(), password)) {
                 throw new IllegalStateException("XMage could not seat the AI player.");
             }
@@ -558,6 +562,7 @@ final class BridgeSession implements MageClient {
             result.put("started", true);
             result.put("format", format);
             result.put("opponent", "Practice Bot");
+            result.put("aiType", aiType.toString());
             events.publish("practice.started", result);
             return result;
         } finally {

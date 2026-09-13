@@ -19,6 +19,7 @@ import mage.view.GameClientMessage;
 import mage.view.GameView;
 import mage.view.DeckView;
 import mage.view.SimpleCardView;
+import mage.view.ChatMessage;
 import mage.cards.decks.DeckCardInfo;
 import mage.cards.decks.DeckCardLists;
 
@@ -417,7 +418,7 @@ final class BridgeSession implements MageClient {
     /** XMage can deliver the useful server rejection just after joinTable returns false. */
     private String waitForJoinError() {
         String reason = session.getLastError();
-        for (int attempt = 0; attempt < 20
+        for (int attempt = 0; attempt < 80
                 && (reason == null || reason.trim().isEmpty())
                 && (lastError == null || lastError.trim().isEmpty()); attempt++) {
             try {
@@ -566,6 +567,27 @@ final class BridgeSession implements MageClient {
             callback.decompressData();
             Object data = callback.getData();
             payload.put("dataType", data == null ? null : data.getClass().getName());
+            if (callback.getMethod() == ClientCallbackMethod.SHOW_USERMESSAGE
+                    && data instanceof List) {
+                List<?> messageData = (List<?>) data;
+                String title = messageData.size() > 0 ? String.valueOf(messageData.get(0)) : "XMage message";
+                String message = messageData.size() > 1 ? String.valueOf(messageData.get(1)) : title;
+                lastError = message;
+                Map<String, Object> userMessage = singletonMessage(message);
+                userMessage.put("title", title);
+                events.publish("xmage.user-message", userMessage);
+                return;
+            }
+            if (callback.getMethod() == ClientCallbackMethod.CHATMESSAGE
+                    && data instanceof ChatMessage) {
+                ChatMessage chat = (ChatMessage) data;
+                Map<String, Object> chatMessage = singletonMessage(chat.getMessage());
+                chatMessage.put("username", chat.getUsername());
+                chatMessage.put("messageType", chat.getMessageType() == null ? null : chat.getMessageType().name());
+                chatMessage.put("turnInfo", chat.getTurnInfo());
+                events.publish("chat.message", chatMessage);
+                return;
+            }
             if (callback.getMethod() == ClientCallbackMethod.JOINED_TABLE
                     && data instanceof TableClientMessage) {
                 TableClientMessage tableMessage = (TableClientMessage) data;

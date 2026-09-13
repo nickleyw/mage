@@ -852,6 +852,13 @@ function logActivity(text, timestamp = new Date()) {
 
 function describeEvent(event) {
   const payload = event.payload || {};
+  if (event.type === 'chat.message') {
+    const speaker = payload.username ? `${payload.username}: ` : '';
+    return `${speaker}${payload.message || 'Chat message'}`;
+  }
+  if (event.type === 'xmage.user-message') {
+    return `${payload.title ? `${payload.title}: ` : ''}${payload.message || 'XMage message'}`;
+  }
   if (event.type === 'xmage.callback') return `${payload.method || 'XMage callback'}${payload.dataType ? ` · ${payload.dataType.split('.').pop()}` : ''}`;
   if (payload.message) return payload.message;
   return event.type.replaceAll('.', ' ');

@@ -40,6 +40,7 @@ final class DeckTextResolver {
 
         List<String> skipped = new ArrayList<>();
         Map<String, Integer> unresolved = new LinkedHashMap<>();
+        Map<String, String> correctedNames = new LinkedHashMap<>();
         int mainCount = 0;
         int sideboardCount = 0;
         Section section = Section.MAIN;
@@ -93,6 +94,9 @@ final class DeckTextResolver {
                         ? unresolved.get(cardName) + quantity : quantity);
                 continue;
             }
+            if (!card.name.equalsIgnoreCase(cardName)) {
+                correctedNames.put(cardName, card.name);
+            }
 
             List<DeckCardInfo> target = sideboardLine || section == Section.SIDEBOARD
                     ? deck.getSideboard() : deck.getCards();
@@ -105,7 +109,7 @@ final class DeckTextResolver {
                 mainCount += quantity;
             }
         }
-        return new Result(deck, mainCount, sideboardCount, unresolved, skipped);
+        return new Result(deck, mainCount, sideboardCount, unresolved, skipped, correctedNames);
     }
 
     DeckCardInfo resolveCard(SimpleCardView card) {
@@ -137,14 +141,17 @@ final class DeckTextResolver {
         private final int sideboardCount;
         private final Map<String, Integer> unresolved;
         private final List<String> skipped;
+        private final Map<String, String> correctedNames;
 
         Result(DeckCardLists deck, int mainCount, int sideboardCount,
-               Map<String, Integer> unresolved, List<String> skipped) {
+               Map<String, Integer> unresolved, List<String> skipped,
+               Map<String, String> correctedNames) {
             this.deck = deck;
             this.mainCount = mainCount;
             this.sideboardCount = sideboardCount;
             this.unresolved = unresolved;
             this.skipped = skipped;
+            this.correctedNames = correctedNames;
         }
 
         DeckCardLists deck() {
@@ -162,6 +169,17 @@ final class DeckTextResolver {
             result.put("sideboardCount", sideboardCount);
             result.put("unresolved", unresolved);
             result.put("skipped", skipped);
+            result.put("correctedNames", correctedNames);
+            List<String> warnings = new ArrayList<>();
+            String lowerName = deck.getName().toLowerCase(Locale.ENGLISH);
+            if (mainCount == 100 && sideboardCount == 0
+                    && (lowerName.contains("edh") || lowerName.contains("commander"))) {
+                warnings.add("This looks like a Commander deck, but no commander is marked. Put the commander after a Commander heading (XMage stores it in the sideboard).");
+            }
+            if (!skipped.isEmpty()) {
+                warnings.add(skipped.size() + " decklist line" + (skipped.size() == 1 ? " was" : "s were") + " skipped.");
+            }
+            result.put("warnings", warnings);
             result.put("canJoin", canJoin());
             result.put("cardIndexReady", true);
             return result;

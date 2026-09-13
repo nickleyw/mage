@@ -394,3 +394,9 @@ footer { padding: 24px 20px calc(24px + env(safe-area-inset-bottom)); text-align
   .dialog-actions span { display: none; }
   .dialog-actions .danger { grid-column: 1 / -1; grid-row: 2; }
 }
+
+.special-choice-toggle { display: flex; align-items: center; gap: 8px; width: 100%; color: var(--muted); }
+.special-choice-toggle input { width: 20px; height: 20px; accent-color: var(--gold); }
+.prompt-error { width: 100%; margin: 4px 0 0; color: var(--danger); font-weight: 750; }
+.spendable-mana { border: 2px solid var(--gold); cursor: pointer; min-height: 32px; }
+.spendable-mana:focus-visible { outline: 3px solid var(--gold); outline-offset: 2px; }

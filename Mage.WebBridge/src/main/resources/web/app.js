@@ -357,6 +357,7 @@ function renderLobby(snapshot) {
       minimumRating > 0 ? `Minimum rating ${minimumRating}` : '',
       Number.isFinite(maximumQuitRatio) && maximumQuitRatio < 100 ? `Maximum quit ratio ${maximumQuitRatio}%` : '',
       table.passworded ? 'Password required' : '',
+      table.webSupported === false ? 'Draft/sealed UI not available yet' : '',
       table.controller]
       .filter(Boolean).join(' · ');
     topline.append(title, state);
@@ -365,9 +366,9 @@ function renderLobby(snapshot) {
     const button = document.createElement('button');
     button.type = 'button';
     button.className = table.joined ? 'button quiet' : 'button primary compact';
-    button.textContent = table.joined ? 'Leave table' : 'Join table';
+    button.textContent = table.joined ? 'Leave table' : (table.webSupported === false ? 'Not supported yet' : 'Join table');
     button.disabled = tableActionBusy || (!table.joined &&
-      (!table.joinable || (table.requiresDeck !== false && !selectedDeck()) || Boolean(snapshot.joinedTableId)));
+      (table.webSupported === false || !table.joinable || (table.requiresDeck !== false && !selectedDeck()) || Boolean(snapshot.joinedTableId)));
     button.addEventListener('click', () => table.joined ? leaveTable(table) : joinTable(table));
     actions.append(button);
     card.append(topline, detail, actions);

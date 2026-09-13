@@ -22,9 +22,49 @@
     <div class="status-pill" id="status-pill" data-state="disconnected">
       <span class="status-dot"></span><span id="status-label">Disconnected</span>
     </div>
+    <button id="resume-game-button" class="button primary compact" type="button" hidden>Return to game</button>
   </header>
 
   <main>
+    <section id="game-panel" class="panel game-panel" aria-labelledby="game-title" hidden>
+      <div class="section-heading game-heading">
+        <div>
+          <p class="step">Live game</p>
+          <h2 id="game-title">Battlefield</h2>
+        </div>
+        <div class="turn-badge">
+          <strong id="game-turn">Starting</strong>
+          <span id="game-step"></span>
+        </div>
+      </div>
+      <div id="game-status" class="game-status" data-state="waiting" role="status" aria-live="assertive">
+        <div class="game-status-mark" aria-hidden="true">…</div>
+        <div>
+          <strong id="game-status-title">Game starting</strong>
+          <span id="game-status-detail">Waiting for the first update from XMage.</span>
+        </div>
+      </div>
+      <details class="game-menu">
+        <summary>Game options</summary>
+        <div class="game-menu-actions">
+          <button id="show-lobby-button" class="button quiet compact" type="button">Show lobby &amp; decks</button>
+          <button id="concede-button" class="button danger compact" type="button">Concede this game</button>
+        </div>
+      </details>
+      <div id="game-prompt" class="game-prompt" hidden></div>
+      <div id="player-boards" class="player-boards"></div>
+      <div class="personal-zones">
+        <section class="zone hand-zone">
+          <div class="zone-heading"><h3>Your hand</h3><span id="hand-count">0 cards</span></div>
+          <div id="hand-cards" class="game-cards"></div>
+        </section>
+        <section class="zone stack-zone">
+          <div class="zone-heading"><h3>Stack</h3><span id="stack-count">Empty</span></div>
+          <div id="stack-cards" class="game-cards"></div>
+        </section>
+      </div>
+    </section>
+
     <section class="panel connect-panel" aria-labelledby="connect-title">
       <div class="section-heading">
         <div>
@@ -38,7 +78,7 @@
         <div class="field wide">
           <label for="host">Server address</label>
           <input id="host" name="host" inputmode="url" autocapitalize="none" autocomplete="url"
-                 placeholder="Your friend’s public host or IP" required>
+                 value="beta.xmage.today" placeholder="beta.xmage.today or your friend’s host" required>
         </div>
         <div class="field port-field">
           <label for="port">Port</label>
@@ -112,35 +152,6 @@
       <div id="table-list" class="table-list" aria-live="polite"></div>
     </section>
 
-    <section id="game-panel" class="panel game-panel" aria-labelledby="game-title" hidden>
-      <div class="section-heading game-heading">
-        <div>
-          <p class="step">Live game</p>
-          <h2 id="game-title">Battlefield</h2>
-        </div>
-        <div class="turn-badge">
-          <strong id="game-turn">Starting</strong>
-          <span id="game-step"></span>
-        </div>
-      </div>
-      <details class="game-menu">
-        <summary>Game options</summary>
-        <button id="concede-button" class="button danger compact" type="button">Concede this game</button>
-      </details>
-      <div id="game-prompt" class="game-prompt" hidden></div>
-      <div id="player-boards" class="player-boards"></div>
-      <div class="personal-zones">
-        <section class="zone hand-zone">
-          <div class="zone-heading"><h3>Your hand</h3><span id="hand-count">0 cards</span></div>
-          <div id="hand-cards" class="game-cards"></div>
-        </section>
-        <section class="zone stack-zone">
-          <div class="zone-heading"><h3>Stack</h3><span id="stack-count">Empty</span></div>
-          <div id="stack-cards" class="game-cards"></div>
-        </section>
-      </div>
-    </section>
-
     <section id="sideboard-panel" class="panel sideboard-panel" aria-labelledby="sideboard-title" hidden>
       <div class="section-heading game-heading">
         <div>
@@ -172,8 +183,8 @@
     <section class="panel activity-panel" aria-labelledby="activity-title">
       <div class="section-heading">
         <div>
-          <p class="step">Connection detail</p>
-          <h2 id="activity-title">Live activity</h2>
+          <p class="step">Troubleshooting</p>
+          <h2 id="activity-title">Technical activity</h2>
         </div>
         <button id="clear-button" class="button quiet" type="button">Clear</button>
       </div>
@@ -190,6 +201,18 @@
       <p>Open the hosted HTTPS address in Safari, tap Share, then Add to Home Screen.</p>
     </details>
   </footer>
+
+  <dialog id="card-dialog" class="card-dialog">
+    <div class="dialog-heading">
+      <div>
+        <p class="step">Card</p>
+        <h2 id="card-dialog-name">Card details</h2>
+      </div>
+      <button id="close-card-dialog" class="icon-button" type="button" aria-label="Close">×</button>
+    </div>
+    <p id="card-dialog-type" class="card-dialog-type"></p>
+    <p id="card-dialog-action" class="card-dialog-action"></p>
+  </dialog>
 
   <dialog id="deck-dialog" class="deck-dialog">
     <form id="deck-form" method="dialog">

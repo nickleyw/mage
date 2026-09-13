@@ -271,9 +271,15 @@ function renderLobby(snapshot) {
     state.className = 'table-state';
     state.textContent = table.stateText || table.state;
     const detail = document.createElement('p');
+    const minimumRating = Number(table.minimumRating || 0);
+    const maximumQuitRatio = Number(table.maximumQuitRatio);
     detail.textContent = [table.gameType, table.deckType,
       table.requiresDeck === false ? 'Deck supplied by event' : 'Bring your deck',
-      `${table.seats} seats`, table.controller]
+      `${table.seats} seats`,
+      minimumRating > 0 ? `Minimum rating ${minimumRating}` : '',
+      Number.isFinite(maximumQuitRatio) && maximumQuitRatio < 100 ? `Maximum quit ratio ${maximumQuitRatio}%` : '',
+      table.passworded ? 'Password required' : '',
+      table.controller]
       .filter(Boolean).join(' · ');
     topline.append(title, state);
     const actions = document.createElement('div');
@@ -866,44 +872,57 @@ function describeEvent(event) {
 
 async function streamEvents() {
   eventAbort?.abort();
-  eventAbort = new AbortController();
-  try {
-    const response = await fetch('/api/events', {headers: headers(), signal: eventAbort.signal});
-    if (!response.ok || !response.body) throw new Error('Live event stream unavailable.');
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = '';
-    while (true) {
-      const {value, done} = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, {stream: true});
-      const chunks = buffer.split('\n\n');
-      buffer = chunks.pop();
-      chunks.forEach(chunk => {
-        const data = chunk.split('\n').find(line => line.startsWith('data: '));
-        if (!data) return;
-        const event = JSON.parse(data.slice(6));
-        logActivity(describeEvent(event), event.timestamp);
-        if (event.type === 'session.connected') setStatus('connected');
-        if (event.type === 'session.disconnected') setStatus('disconnected');
-        if (event.type === 'session.error') setStatus('error');
-        if (event.type === 'table.joined' || event.type === 'table.left') refresh();
-        if (event.type === 'sideboard.started') {
-          currentSnapshot = {...currentSnapshot, sideboard: event.payload};
-          renderSideboard(event.payload);
-        }
-        if (event.type === 'sideboard.submitted') {
-          currentSnapshot = {...currentSnapshot, sideboard: null};
-          renderSideboard(null);
-        }
-        if (event.type === 'game.started' || event.type === 'game.state' || event.type === 'game.over') {
-          currentSnapshot = {...currentSnapshot, game: event.payload};
-          renderGame(event.payload);
-        }
-      });
+  const controller = new AbortController();
+  eventAbort = controller;
+  let announcedOffline = false;
+  while (!controller.signal.aborted) {
+    try {
+      const response = await fetch('/api/events', {headers: headers(), signal: controller.signal});
+      if (!response.ok || !response.body) throw new Error('Live event stream unavailable.');
+      if (announcedOffline) logActivity('Live activity reconnected');
+      announcedOffline = false;
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      while (true) {
+        const {value, done} = await reader.read();
+        if (done) throw new Error('Live event stream ended.');
+        buffer += decoder.decode(value, {stream: true});
+        const chunks = buffer.split('\n\n');
+        buffer = chunks.pop();
+        chunks.forEach(chunk => {
+          const data = chunk.split('\n').find(line => line.startsWith('data: '));
+          if (!data) return;
+          const event = JSON.parse(data.slice(6));
+          logActivity(describeEvent(event), event.timestamp);
+          if (event.type === 'session.connected') setStatus('connected');
+          if (event.type === 'session.disconnected') setStatus('disconnected');
+          if (event.type === 'session.error') setStatus('error');
+          if (event.type === 'xmage.user-message' && /join table|submit deck|load failed/i.test(event.payload?.title || '')) {
+            lobbyMessage.className = 'lobby-message error';
+            lobbyMessage.textContent = event.payload?.message || event.payload?.title;
+          }
+          if (event.type === 'table.joined' || event.type === 'table.left') refresh();
+          if (event.type === 'sideboard.started') {
+            currentSnapshot = {...currentSnapshot, sideboard: event.payload};
+            renderSideboard(event.payload);
+          }
+          if (event.type === 'sideboard.submitted') {
+            currentSnapshot = {...currentSnapshot, sideboard: null};
+            renderSideboard(null);
+          }
+          if (event.type === 'game.started' || event.type === 'game.state' || event.type === 'game.over') {
+            currentSnapshot = {...currentSnapshot, game: event.payload};
+            renderGame(event.payload);
+          }
+        });
+      }
+    } catch (error) {
+      if (error.name === 'AbortError' || controller.signal.aborted) return;
+      if (!announcedOffline) logActivity('Live activity interrupted; reconnecting…');
+      announcedOffline = true;
+      await new Promise(resolve => setTimeout(resolve, 1500));
     }
-  } catch (error) {
-    if (error.name !== 'AbortError') logActivity(error.message);
   }
 }
 

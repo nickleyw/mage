@@ -3,6 +3,8 @@ package mage.webbridge;
 import mage.interfaces.MageClient;
 import mage.interfaces.callback.ClientCallback;
 import mage.interfaces.callback.ClientCallbackMethod;
+import mage.interfaces.callback.ClientCallbackType;
+import mage.constants.ManaType;
 import mage.constants.TableState;
 import mage.constants.PlayerAction;
 import mage.constants.MatchBufferTime;
@@ -23,6 +25,7 @@ import mage.view.TableView;
 import mage.view.AbilityPickerView;
 import mage.view.GameClientMessage;
 import mage.view.GameView;
+import mage.view.GameEndView;
 import mage.view.DeckView;
 import mage.view.SimpleCardView;
 import mage.view.ChatMessage;
@@ -60,6 +63,7 @@ final class BridgeSession implements MageClient {
     private volatile CountDownLatch pendingJoinErrorSignal = new CountDownLatch(0);
     private volatile UUID joinedTableId;
     private volatile UUID currentGameId;
+    private volatile UUID currentPlayerId;
     private volatile Map<String, Object> currentGame;
     private volatile Map<String, Object> currentPrompt;
     private volatile ClientCallbackMethod currentPromptMethod;
@@ -70,6 +74,7 @@ final class BridgeSession implements MageClient {
     private volatile String currentSideboardDeckName = "Web deck";
     private volatile Map<UUID, DeckCardInfo> currentSideboardCards = Collections.emptyMap();
     private volatile Map<String, Object> currentSideboard;
+    private final Map<ClientCallbackType, Long> lastCallbackMessages = new LinkedHashMap<>();
 
     BridgeSession(EventBroker events) {
         this.events = events;
@@ -236,18 +241,29 @@ final class BridgeSession implements MageClient {
                 break;
             case "string":
                 if (currentPromptMethod != ClientCallbackMethod.GAME_CHOOSE_CHOICE
-                        && currentPromptMethod != ClientCallbackMethod.GAME_GET_MULTI_AMOUNT) {
+                        && currentPromptMethod != ClientCallbackMethod.GAME_GET_MULTI_AMOUNT
+                        && currentPromptMethod != ClientCallbackMethod.GAME_SELECT
+                        && currentPromptMethod != ClientCallbackMethod.GAME_PLAY_MANA) {
                     throw new IllegalArgumentException("The current XMage prompt does not accept a text choice.");
                 }
-                if (currentPromptMethod == ClientCallbackMethod.GAME_CHOOSE_CHOICE
+                if ((currentPromptMethod == ClientCallbackMethod.GAME_CHOOSE_CHOICE
+                        || currentPromptMethod == ClientCallbackMethod.GAME_SELECT
+                        || currentPromptMethod == ClientCallbackMethod.GAME_PLAY_MANA)
                         && !currentAllowedStrings.contains(value)
-                        && !(value == null && !Boolean.TRUE.equals(currentPrompt.get("required")))) {
+                        && !(value == null && currentPromptMethod == ClientCallbackMethod.GAME_CHOOSE_CHOICE
+                        && !Boolean.TRUE.equals(currentPrompt.get("required")))) {
                     throw new IllegalArgumentException("That choice is not available for the current prompt.");
                 }
                 if (currentPromptMethod == ClientCallbackMethod.GAME_GET_MULTI_AMOUNT) {
                     value = validateMultiAmount(value);
                 }
                 sent = session.sendPlayerString(currentGameId, value);
+                break;
+            case "mana":
+                if (currentPromptMethod != ClientCallbackMethod.GAME_PLAY_MANA || currentPlayerId == null) {
+                    throw new IllegalArgumentException("XMage is not asking you to spend mana from your pool.");
+                }
+                sent = session.sendPlayerManaType(currentGameId, currentPlayerId, parseManaType(value));
                 break;
             default:
                 throw new IllegalArgumentException("Unsupported game response action.");
@@ -273,6 +289,21 @@ final class BridgeSession implements MageClient {
         }
         events.publish("game.response", result);
         return result;
+    }
+
+    private ManaType parseManaType(String value) {
+        if (value == null) {
+            throw new IllegalArgumentException("A mana color is required.");
+        }
+        switch (value.toUpperCase()) {
+            case "W": return ManaType.WHITE;
+            case "U": return ManaType.BLUE;
+            case "B": return ManaType.BLACK;
+            case "R": return ManaType.RED;
+            case "G": return ManaType.GREEN;
+            case "C": return ManaType.COLORLESS;
+            default: throw new IllegalArgumentException("That mana type is not available.");
+        }
     }
 
     synchronized Map<String, Object> performGameAction(String action) {
@@ -701,7 +732,24 @@ final class BridgeSession implements MageClient {
     }
 
     @Override
-    public void onCallback(ClientCallback callback) {
+    public synchronized void onCallback(ClientCallback callback) {
+        ClientCallbackMethod callbackMethod = callback.getMethod();
+        if (callbackMethod != null && callbackMethod.getType() != ClientCallbackType.CLIENT_SIDE_EVENT) {
+            long latest = 0;
+            for (Long value : lastCallbackMessages.values()) {
+                latest = Math.max(latest, value == null ? 0 : value);
+            }
+            if (latest > callback.getMessageId() && callbackMethod.getType().mustIgnoreOnOutdated()) {
+                Map<String, Object> ignored = singletonMessage("Ignored an outdated XMage update.");
+                ignored.put("method", callbackMethod.name());
+                ignored.put("messageId", callback.getMessageId());
+                events.publish("game.update-ignored", ignored);
+                return;
+            }
+            if (!callbackMethod.getType().canComeInAnyOrder()) {
+                lastCallbackMessages.put(callbackMethod.getType(), callback.getMessageId());
+            }
+        }
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("messageId", callback.getMessageId());
         payload.put("method", callback.getMethod() == null ? null : callback.getMethod().name());
@@ -736,6 +784,20 @@ final class BridgeSession implements MageClient {
                 events.publish("chat.message", chatMessage);
                 return;
             }
+            if (callback.getMethod() == ClientCallbackMethod.END_GAME_INFO
+                    && data instanceof GameEndView) {
+                GameEndView end = (GameEndView) data;
+                Map<String, Object> ended = currentGame == null
+                        ? new LinkedHashMap<>() : new LinkedHashMap<>(currentGame);
+                ended.put("active", false);
+                ended.put("prompt", null);
+                ended.put("result", end.getGameInfo());
+                ended.put("matchResult", end.getMatchInfo());
+                ended.put("additionalResult", end.getAdditionalInfo());
+                currentGame = ended;
+                clearPrompt();
+                events.publish("game.over", ended);
+            }
             if (callback.getMethod() == ClientCallbackMethod.JOINED_TABLE
                     && data instanceof TableClientMessage) {
                 TableClientMessage tableMessage = (TableClientMessage) data;
@@ -760,6 +822,7 @@ final class BridgeSession implements MageClient {
         if (method == ClientCallbackMethod.START_GAME && data instanceof TableClientMessage) {
             TableClientMessage message = (TableClientMessage) data;
             currentGameId = message.getGameId();
+            currentPlayerId = message.getPlayerId();
             clearSideboard();
             clearPrompt();
             Map<String, Object> started = new LinkedHashMap<>();
@@ -871,9 +934,20 @@ final class BridgeSession implements MageClient {
             } else {
                 strings.addAll(message.getChoice().getChoices());
             }
-            if (message.getChoice().isSpecialEnabled() && message.getChoice().isSpecialCanBeEmpty()) {
-                strings.add("#");
+            if (message.getChoice().isSpecialEnabled()) {
+                Set<String> ordinary = new LinkedHashSet<>(strings);
+                for (String choice : ordinary) {
+                    strings.add("#" + choice);
+                }
+                if (message.getChoice().isSpecialCanBeEmpty()) {
+                    strings.add("#");
+                }
             }
+        }
+        Object specialButton = message.getOptions() == null ? null : message.getOptions().get("specialButton");
+        if (specialButton instanceof String
+                && (method == ClientCallbackMethod.GAME_SELECT || method == ClientCallbackMethod.GAME_PLAY_MANA)) {
+            strings.add("special");
         }
         currentAllowedStrings = Collections.unmodifiableSet(strings);
     }
@@ -943,6 +1017,7 @@ final class BridgeSession implements MageClient {
 
     private void clearGame() {
         currentGameId = null;
+        currentPlayerId = null;
         currentGame = null;
         clearPrompt();
         clearSideboard();

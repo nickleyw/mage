@@ -10,6 +10,11 @@ import mage.view.PlayerView;
 import mage.view.CommandObjectView;
 import mage.view.CounterView;
 import mage.view.ManaPoolView;
+import mage.view.SimpleCardView;
+import mage.view.SimpleCardsView;
+import mage.view.RevealedView;
+import mage.view.LookedAtView;
+import mage.view.CombatGroupView;
 import mage.choices.Choice;
 import mage.util.MultiAmountMessage;
 
@@ -40,6 +45,11 @@ final class GameStateReducer {
         result.put("players", players(game.getPlayers(), playable));
         result.put("hand", cards(game.getMyHand(), playable));
         result.put("stack", cards(game.getStack(), playable));
+        result.put("revealed", revealedGroups(game.getRevealed(), playable));
+        result.put("lookedAt", lookedAtGroups(game.getLookedAt()));
+        result.put("companions", revealedGroups(game.getCompanion(), playable));
+        result.put("opponentHands", simpleGroups(game.getOpponentHands()));
+        result.put("combat", combatGroups(game.getCombat(), playable));
         result.put("playableIds", ids(playable));
         result.put("prompt", prompt);
         return result;
@@ -186,6 +196,74 @@ final class GameStateReducer {
         result.put("R", pool.getRed());
         result.put("G", pool.getGreen());
         result.put("C", pool.getColorless());
+        return result;
+    }
+
+    private List<Map<String, Object>> revealedGroups(List<RevealedView> views, Set<UUID> playable) {
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (RevealedView view : views) {
+            Map<String, Object> group = new LinkedHashMap<>();
+            group.put("name", plainText(view.getName()));
+            group.put("cards", cards(view.getCards(), playable));
+            result.add(group);
+        }
+        return result;
+    }
+
+    private List<Map<String, Object>> lookedAtGroups(List<LookedAtView> views) {
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (LookedAtView view : views) {
+            Map<String, Object> group = new LinkedHashMap<>();
+            group.put("name", plainText(view.getName()));
+            group.put("cards", simpleCards(view.getCards()));
+            result.add(group);
+        }
+        return result;
+    }
+
+    private List<Map<String, Object>> simpleGroups(Map<String, SimpleCardsView> views) {
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (Map.Entry<String, SimpleCardsView> entry : views.entrySet()) {
+            Map<String, Object> group = new LinkedHashMap<>();
+            group.put("name", plainText(entry.getKey()));
+            group.put("cards", simpleCards(entry.getValue()));
+            result.add(group);
+        }
+        return result;
+    }
+
+    private List<Map<String, Object>> simpleCards(SimpleCardsView views) {
+        List<Map<String, Object>> result = new ArrayList<>();
+        if (views == null) {
+            return result;
+        }
+        for (SimpleCardView card : views.values()) {
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("id", card.getId().toString());
+            item.put("name", null);
+            item.put("type", "Visible card");
+            item.put("setCode", card.getExpansionSetCode());
+            item.put("cardNumber", card.getCardNumber());
+            item.put("faceDown", false);
+            item.put("playable", card.isPlayable());
+            item.put("choosable", card.isChoosable());
+            item.put("selected", card.isSelected());
+            result.add(item);
+        }
+        return result;
+    }
+
+    private List<Map<String, Object>> combatGroups(List<CombatGroupView> views, Set<UUID> playable) {
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (CombatGroupView view : views) {
+            Map<String, Object> group = new LinkedHashMap<>();
+            group.put("defenderId", view.getDefenderId() == null ? null : view.getDefenderId().toString());
+            group.put("defender", plainText(view.getDefenderName()));
+            group.put("blocked", view.isBlocked());
+            group.put("attackers", cards(view.getAttackers(), playable));
+            group.put("blockers", cards(view.getBlockers(), playable));
+            result.add(group);
+        }
         return result;
     }
 

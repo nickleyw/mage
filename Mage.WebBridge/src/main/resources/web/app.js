@@ -638,7 +638,7 @@ async function loadCardArt(card) {
   cardArtFlip.hidden = true;
   cardArtLink.hidden = true;
 
-  if (card.faceDown || !card.name) {
+  if (card.faceDown || (!card.name && !(card.setCode && card.cardNumber))) {
     cardArtPanel.hidden = true;
     return;
   }
@@ -651,6 +651,7 @@ async function loadCardArt(card) {
     if (requestId !== cardArtRequestId) return;
     currentCardArt = art;
     currentCardArtFace = chooseScryfallFace(art, card.name);
+    if (!card.name && art.name) cardDialogName.textContent = art.name;
     renderCardArt();
   } catch (_) {
     if (requestId !== cardArtRequestId) return;
@@ -988,6 +989,58 @@ async function sendGameResponse(action, value) {
   }
 }
 
+function renderGameContext(game) {
+  const groups = [
+    ...(game.revealed || []).map(group => ({...group, kind: 'Revealed'})),
+    ...(game.lookedAt || []).map(group => ({...group, kind: 'You may look at'})),
+    ...(game.opponentHands || []).map(group => ({...group, kind: 'Visible hand'})),
+    ...(game.companions || []).map(group => ({...group, kind: 'Companion'}))
+  ];
+  const combats = game.combat || [];
+  if (!groups.length && !combats.length) return;
+
+  const panel = document.createElement('section');
+  panel.className = 'game-context-panel';
+  const title = document.createElement('h3');
+  title.textContent = combats.length ? 'Combat and visible cards' : 'Visible cards';
+  panel.append(title);
+
+  combats.forEach((combat, index) => {
+    const group = document.createElement('div');
+    group.className = 'game-context-group combat-context';
+    const heading = document.createElement('strong');
+    heading.textContent = `Combat ${index + 1} · attacking ${combat.defender || 'defender'}${combat.blocked ? ' · blocked' : ''}`;
+    group.append(heading);
+    const attackers = document.createElement('div');
+    attackers.className = 'game-cards prompt-cards';
+    renderCards(attackers, combat.attackers || [], 'No attackers', game);
+    group.append(attackers);
+    if (combat.blockers?.length) {
+      const blockerLabel = document.createElement('small');
+      blockerLabel.textContent = 'Blocked by';
+      const blockers = document.createElement('div');
+      blockers.className = 'game-cards prompt-cards';
+      renderCards(blockers, combat.blockers, 'No blockers', game);
+      group.append(blockerLabel, blockers);
+    }
+    panel.append(group);
+  });
+
+  groups.forEach(context => {
+    if (!context.cards?.length) return;
+    const group = document.createElement('div');
+    group.className = 'game-context-group';
+    const heading = document.createElement('strong');
+    heading.textContent = `${context.kind} · ${context.name || 'Cards'}`;
+    const cards = document.createElement('div');
+    cards.className = 'game-cards prompt-cards';
+    renderCards(cards, context.cards, 'No visible cards', game);
+    group.append(heading, cards);
+    panel.append(group);
+  });
+  playerBoards.append(panel);
+}
+
 function renderGame(game) {
   if (!game) {
     gamePanel.hidden = true;
@@ -1010,6 +1063,7 @@ function renderGame(game) {
   renderPrompt(game.prompt, game);
 
   playerBoards.replaceChildren();
+  renderGameContext(game);
   (game.players || []).forEach(player => {
     const board = document.createElement('article');
     board.className = `player-board${player.controlled ? ' mine' : ''}${player.active ? ' active-player' : ''}${player.priority ? ' has-priority' : ''}`;
@@ -1127,7 +1181,8 @@ function renderGameStatus(game) {
     gameStatus.dataset.state = 'ended';
     gameStatus.querySelector('.game-status-mark').textContent = '■';
     gameStatusTitle.textContent = 'Game ended';
-    gameStatusDetail.textContent = cleanDisplayText(game.message) || 'XMage has closed this game. You can return to the lobby or wait for sideboarding.';
+    gameStatusDetail.textContent = [game.result, game.matchResult, game.additionalResult, game.message]
+      .map(cleanDisplayText).filter(Boolean).join(' ') || 'XMage has closed this game. You can return to the lobby or wait for sideboarding.';
     conceding = false;
     return;
   }

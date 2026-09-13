@@ -26,6 +26,9 @@ const lobbyMessage = document.querySelector('#lobby-message');
 const gamePanel = document.querySelector('#game-panel');
 const gameTurn = document.querySelector('#game-turn');
 const gameStep = document.querySelector('#game-step');
+const gameStatus = document.querySelector('#game-status');
+const gameStatusTitle = document.querySelector('#game-status-title');
+const gameStatusDetail = document.querySelector('#game-status-detail');
 const gamePrompt = document.querySelector('#game-prompt');
 const playerBoards = document.querySelector('#player-boards');
 const handCards = document.querySelector('#hand-cards');
@@ -42,6 +45,12 @@ const sideboardSideCount = document.querySelector('#sideboard-side-count');
 const sideboardChanges = document.querySelector('#sideboard-changes');
 const sideboardSubmitButton = document.querySelector('#sideboard-submit-button');
 const concedeButton = document.querySelector('#concede-button');
+const showLobbyButton = document.querySelector('#show-lobby-button');
+const resumeGameButton = document.querySelector('#resume-game-button');
+const cardDialog = document.querySelector('#card-dialog');
+const cardDialogName = document.querySelector('#card-dialog-name');
+const cardDialogType = document.querySelector('#card-dialog-type');
+const cardDialogAction = document.querySelector('#card-dialog-action');
 const accessTokenInput = document.querySelector('#access-token');
 const rememberTokenInput = document.querySelector('#remember-token');
 let eventAbort;
@@ -49,6 +58,9 @@ let editingDeckId = null;
 let currentSnapshot = {connected: false, tables: [], joinedTableId: null};
 let tableActionBusy = false;
 let gameResponseBusy = false;
+let gameViewSuppressed = false;
+let gameWasActive = false;
+let conceding = false;
 let sideboardDraft = null;
 let sideboardDraftKey = null;
 let sideboardSubmitBusy = false;
@@ -436,7 +448,11 @@ function cardElement(card, game) {
   if (selectable) {
     element.tabIndex = 0;
     element.setAttribute('role', 'button');
-    element.setAttribute('aria-label', `Select ${name.textContent}`);
+    const action = document.createElement('span');
+    action.className = 'game-card-action';
+    action.textContent = cardActionLabel(card, game);
+    element.prepend(action);
+    element.setAttribute('aria-label', `${action.textContent} ${name.textContent}`);
     const choose = () => sendGameResponse('uuid', card.id);
     element.addEventListener('click', choose);
     element.addEventListener('keydown', event => {
@@ -445,8 +461,39 @@ function cardElement(card, game) {
         choose();
       }
     });
+  } else {
+    element.tabIndex = 0;
+    element.setAttribute('role', 'button');
+    element.setAttribute('aria-label', `View ${name.textContent}`);
+    const inspect = () => showCardDetails(card, game);
+    element.addEventListener('click', inspect);
+    element.addEventListener('keydown', event => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        inspect();
+      }
+    });
   }
   return element;
+}
+
+function cardActionLabel(card, game) {
+  if (game?.prompt?.type === 'GAME_TARGET' || (game?.prompt?.targets || []).includes(card.id)) return 'Target';
+  if (card.playable) return 'Play';
+  return 'Choose';
+}
+
+function showCardDetails(card, game) {
+  cardDialogName.textContent = card.faceDown ? 'Face-down card' : (card.name || 'Unknown card');
+  cardDialogType.textContent = [card.manaCost, card.type, card.power && card.toughness ? `${card.power}/${card.toughness}` : ''].filter(Boolean).join(' · ') || 'No public card details.';
+  if (!game?.active) {
+    cardDialogAction.textContent = 'This game has ended; no actions are available.';
+  } else if (game?.prompt) {
+    cardDialogAction.textContent = 'This card is not one of XMage’s available choices for the current action. Cards you can use have a bright Play, Choose, or Target badge.';
+  } else {
+    cardDialogAction.textContent = 'No action is available for this card right now. The banner at the top will change when XMage needs your response.';
+  }
+  cardDialog.showModal();
 }
 
 function isCardSelectable(card, game) {
@@ -485,7 +532,19 @@ function renderPrompt(prompt, game) {
   if (!prompt) return;
 
   const label = document.createElement('strong');
-  label.textContent = prompt.type.replaceAll('_', ' ');
+  const promptLabels = {
+    GAME_ASK: 'Choose an answer',
+    GAME_SELECT: 'Your priority',
+    GAME_TARGET: 'Choose a target',
+    GAME_CHOOSE_PILE: 'Choose a pile',
+    GAME_PLAY_MANA: 'Pay mana',
+    GAME_PLAY_XMANA: 'Choose X',
+    GAME_GET_AMOUNT: 'Choose an amount',
+    GAME_GET_MULTI_AMOUNT: 'Divide an amount',
+    GAME_CHOOSE_CHOICE: 'Choose one',
+    GAME_CHOOSE_ABILITY: 'Choose an ability'
+  };
+  label.textContent = promptLabels[prompt.type] || 'Your action';
   const detail = document.createElement('span');
   detail.textContent = prompt.message || 'XMage is waiting for your response.';
   gamePrompt.append(label, detail);
@@ -526,7 +585,7 @@ function renderPrompt(prompt, game) {
       break;
     }
     case 'GAME_SELECT':
-      actions.append(responseButton(rightLabel || 'Done', 'boolean', false));
+      actions.append(responseButton(rightLabel || 'Pass priority / Done', 'boolean', false, 'primary'));
       break;
     case 'GAME_TARGET':
       if (!prompt.required) actions.append(responseButton(rightLabel || 'Cancel', 'boolean', false));
@@ -637,17 +696,28 @@ async function sendGameResponse(action, value) {
 function renderGame(game) {
   if (!game) {
     gamePanel.hidden = true;
+    document.body.classList.remove('game-active');
+    resumeGameButton.hidden = true;
+    gameWasActive = false;
+    conceding = false;
     return;
   }
-  gamePanel.hidden = false;
+  const becameActive = Boolean(game.active) && !gameWasActive;
+  if (becameActive) gameViewSuppressed = false;
+  gamePanel.hidden = gameViewSuppressed;
+  document.body.classList.toggle('game-active', !gameViewSuppressed);
+  resumeGameButton.hidden = !gameViewSuppressed;
+  resumeGameButton.textContent = game.active ? 'Return to game' : 'Review finished game';
+  gameWasActive = Boolean(game.active);
   gameTurn.textContent = game.turn ? `Turn ${game.turn} · ${game.activePlayer || 'Active player'}` : 'Game starting…';
   gameStep.textContent = [game.phase, game.step, game.priorityPlayer ? `Priority: ${game.priorityPlayer}` : ''].filter(Boolean).join(' · ');
+  renderGameStatus(game);
   renderPrompt(game.prompt, game);
 
   playerBoards.replaceChildren();
   (game.players || []).forEach(player => {
     const board = document.createElement('article');
-    board.className = `player-board${player.controlled ? ' mine' : ''}`;
+    board.className = `player-board${player.controlled ? ' mine' : ''}${player.active ? ' active-player' : ''}${player.priority ? ' has-priority' : ''}`;
     const summary = document.createElement('div');
     summary.className = 'player-summary';
     const identity = document.createElement('div');
@@ -733,15 +803,67 @@ function renderGame(game) {
   handCount.textContent = `${(game.hand || []).length} card${(game.hand || []).length === 1 ? '' : 's'}`;
   renderCards(stackCards, game.stack || [], 'The stack is empty', game);
   stackCount.textContent = (game.stack || []).length ? `${game.stack.length} object${game.stack.length === 1 ? '' : 's'}` : 'Empty';
+  concedeButton.disabled = !game.active || conceding;
+  concedeButton.textContent = conceding ? 'Conceding…' : 'Concede this game';
+  if (becameActive) requestAnimationFrame(() => gamePanel.scrollIntoView({block: 'start'}));
+}
+
+function renderGameStatus(game) {
+  const me = (game.players || []).find(player => player.controlled);
+  const promptMessage = game.prompt?.message || game.prompt?.subMessage;
+  if (!game.active) {
+    gameStatus.dataset.state = 'ended';
+    gameStatus.querySelector('.game-status-mark').textContent = '■';
+    gameStatusTitle.textContent = 'Game ended';
+    gameStatusDetail.textContent = game.message || 'XMage has closed this game. You can return to the lobby or wait for sideboarding.';
+    conceding = false;
+    return;
+  }
+  if (conceding) {
+    gameStatus.dataset.state = 'waiting';
+    gameStatus.querySelector('.game-status-mark').textContent = '…';
+    gameStatusTitle.textContent = 'Concession sent';
+    gameStatusDetail.textContent = 'Waiting for XMage to finish the game and report the result.';
+    return;
+  }
+  if (game.prompt) {
+    gameStatus.dataset.state = 'action';
+    gameStatus.querySelector('.game-status-mark').textContent = '!';
+    gameStatusTitle.textContent = 'Your action is required';
+    gameStatusDetail.textContent = promptMessage || 'Use the highlighted cards or the response buttons below.';
+    return;
+  }
+  if (me?.priority || (game.priorityPlayer && game.priorityPlayer === me?.name)) {
+    gameStatus.dataset.state = 'action';
+    gameStatus.querySelector('.game-status-mark').textContent = '!';
+    gameStatusTitle.textContent = 'You have priority';
+    gameStatusDetail.textContent = 'XMage is preparing your available actions. Playable cards will be highlighted.';
+    return;
+  }
+  gameStatus.dataset.state = 'waiting';
+  gameStatus.querySelector('.game-status-mark').textContent = '…';
+  if (game.priorityPlayer) {
+    gameStatusTitle.textContent = `Waiting for ${game.priorityPlayer}`;
+    gameStatusDetail.textContent = `${game.activePlayer || game.priorityPlayer} is the active player. You do not need to respond yet.`;
+  } else if (game.activePlayer === me?.name) {
+    gameStatusTitle.textContent = 'Your turn';
+    gameStatusDetail.textContent = 'Waiting for XMage to request your next action.';
+  } else {
+    gameStatusTitle.textContent = game.activePlayer ? `${game.activePlayer}’s turn` : 'Game in progress';
+    gameStatusDetail.textContent = 'No response is needed from you right now.';
+  }
 }
 
 async function concedeGame() {
   if (!currentSnapshot.game?.active || !confirm('Concede this game? Your match will continue if another game remains.')) return;
   concedeButton.disabled = true;
+  conceding = true;
+  renderGame(currentSnapshot.game);
   try {
     await api('/api/game/action', {method: 'POST', body: JSON.stringify({action: 'concede'})});
     logActivity('Conceded the current game');
   } catch (error) {
+    conceding = false;
     logActivity(`Concede failed · ${error.message}`);
   } finally {
     concedeButton.disabled = false;
@@ -870,6 +992,10 @@ function describeEvent(event) {
   return event.type.replaceAll('.', ' ');
 }
 
+function shouldShowTechnicalEvent(event) {
+  return event.type !== 'xmage.callback';
+}
+
 async function streamEvents() {
   eventAbort?.abort();
   const controller = new AbortController();
@@ -894,7 +1020,7 @@ async function streamEvents() {
           const data = chunk.split('\n').find(line => line.startsWith('data: '));
           if (!data) return;
           const event = JSON.parse(data.slice(6));
-          logActivity(describeEvent(event), event.timestamp);
+          if (shouldShowTechnicalEvent(event)) logActivity(describeEvent(event), event.timestamp);
           if (event.type === 'session.connected') setStatus('connected');
           if (event.type === 'session.disconnected') setStatus('disconnected');
           if (event.type === 'session.error') setStatus('error');
@@ -986,6 +1112,20 @@ refreshButton.addEventListener('click', refresh);
 clearButton.addEventListener('click', () => activityList.replaceChildren());
 sideboardSubmitButton.addEventListener('click', submitSideboard);
 concedeButton.addEventListener('click', concedeGame);
+showLobbyButton.addEventListener('click', () => {
+  gameViewSuppressed = true;
+  renderGame(currentSnapshot.game);
+  document.querySelector('.lobby-panel').scrollIntoView({block: 'start'});
+});
+resumeGameButton.addEventListener('click', () => {
+  gameViewSuppressed = false;
+  renderGame(currentSnapshot.game);
+  requestAnimationFrame(() => gamePanel.scrollIntoView({block: 'start'}));
+});
+document.querySelector('#close-card-dialog').addEventListener('click', () => cardDialog.close());
+cardDialog.addEventListener('click', event => {
+  if (event.target === cardDialog) cardDialog.close();
+});
 accessTokenInput.addEventListener('change', () => {
   if (rememberTokenInput.checked && accessTokenInput.value.trim()) {
     localStorage.setItem(ACCESS_TOKEN_KEY, accessTokenInput.value.trim());

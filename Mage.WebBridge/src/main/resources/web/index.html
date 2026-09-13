@@ -37,6 +37,13 @@
           <span id="game-step"></span>
         </div>
       </div>
+      <div id="self-play-switcher" class="self-play-switcher" hidden>
+        <span>You are controlling</span>
+        <div class="perspective-buttons" role="group" aria-label="Choose which player to control">
+          <button class="button quiet compact" type="button" data-perspective="1">Player 1</button>
+          <button class="button quiet compact" type="button" data-perspective="2">Player 2</button>
+        </div>
+      </div>
       <div id="game-status" class="game-status" data-state="waiting" role="status" aria-live="assertive">
         <div class="game-status-mark" aria-hidden="true">…</div>
         <div>
@@ -133,6 +140,54 @@
         <p>Paste a list, upload a deck file, or import a public Archidekt, Moxfield, or MTGTop8 link.</p>
       </div>
       <div id="deck-list" class="deck-list" aria-live="polite"></div>
+    </section>
+
+    <section id="solo-panel" class="panel solo-panel" aria-labelledby="solo-title">
+      <div class="section-heading">
+        <div>
+          <p class="step">Solo table</p>
+          <h2 id="solo-title">Play both sides</h2>
+        </div>
+        <span class="source-badge">Private · Unrated</span>
+      </div>
+      <p class="solo-intro">Use two ordinary player seats and switch perspectives during the match. XMage still provides the rules through the connected server; both hands are intentionally visible to you.</p>
+      <div class="solo-grid">
+        <div class="solo-deck-summary">
+          <span>Player 1 deck</span>
+          <strong id="solo-player-deck">Select a deck above</strong>
+        </div>
+        <label class="field" for="solo-opponent-deck">
+          Player 2 deck
+          <select id="solo-opponent-deck"></select>
+        </label>
+        <label class="field" for="solo-opponent-username">
+          Player 2 XMage username
+          <input id="solo-opponent-username" autocapitalize="none" minlength="3" maxlength="14" pattern="[a-z0-9_]+">
+        </label>
+        <label class="field" for="solo-format">
+          Rules and deck legality
+          <select id="solo-format">
+            <option value="freeform">Freeform — mechanics testing</option>
+            <option value="standard">Standard</option>
+            <option value="pioneer">Pioneer</option>
+            <option value="modern">Modern</option>
+            <option value="legacy">Legacy</option>
+            <option value="vintage">Vintage</option>
+            <option value="pauper">Pauper</option>
+            <option value="premodern">Premodern</option>
+            <option value="commander">Commander — two player</option>
+          </select>
+        </label>
+        <details class="solo-password">
+          <summary>Player 2 password</summary>
+          <label class="field" for="solo-opponent-password">
+            Only needed on servers requiring accounts
+            <input id="solo-opponent-password" type="password" autocomplete="current-password">
+          </label>
+        </details>
+        <button id="solo-start-button" class="button primary" type="button">Start solo match</button>
+      </div>
+      <p id="solo-message" class="lobby-message" role="status">Connect and select two decks to begin.</p>
     </section>
 
     <section class="panel lobby-panel" aria-labelledby="lobby-title">

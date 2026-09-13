@@ -44,6 +44,7 @@ public final class BridgeServer {
         this.server.createContext("/api/decks/validate", this::handleDeckValidation);
         this.server.createContext("/api/tables/join", this::handleTableJoin);
         this.server.createContext("/api/tables/leave", this::handleTableLeave);
+        this.server.createContext("/api/practice/start", this::handlePracticeStart);
         this.server.createContext("/api/game", this::handleGame);
         this.server.createContext("/api/game/respond", this::handleGameResponse);
         this.server.createContext("/api/game/action", this::handleGameAction);
@@ -179,6 +180,30 @@ public final class BridgeServer {
         try {
             LeaveTableRequest request = gson.fromJson(readBody(exchange), LeaveTableRequest.class);
             sendJson(exchange, 200, bridgeSession.leaveTable(request == null ? null : request.tableId));
+        } catch (JsonParseException | IllegalArgumentException error) {
+            sendError(exchange, 400, error.getMessage());
+        } catch (IllegalStateException error) {
+            sendError(exchange, 502, error.getMessage());
+        }
+    }
+
+    private void handlePracticeStart(HttpExchange exchange) throws IOException {
+        if (!authorize(exchange) || !method(exchange, "POST")) {
+            return;
+        }
+        try {
+            PracticeRequest request = gson.fromJson(readBody(exchange), PracticeRequest.class);
+            if (request == null) {
+                throw new IllegalArgumentException("A JSON request body is required.");
+            }
+            requireDeckRequest(request);
+            if (request.opponentDeckName == null || request.opponentDeckName.trim().isEmpty()
+                    || request.opponentDeckText == null || request.opponentDeckText.trim().isEmpty()) {
+                throw new IllegalArgumentException("Choose a deck for the AI opponent.");
+            }
+            sendJson(exchange, 200, bridgeSession.startPractice(
+                    request.deckName, request.deckText,
+                    request.opponentDeckName, request.opponentDeckText, request.format));
         } catch (JsonParseException | IllegalArgumentException error) {
             sendError(exchange, 400, error.getMessage());
         } catch (IllegalStateException error) {
@@ -367,6 +392,12 @@ public final class BridgeServer {
 
     private static final class LeaveTableRequest {
         private String tableId;
+    }
+
+    private static final class PracticeRequest extends DeckRequest {
+        private String opponentDeckName;
+        private String opponentDeckText;
+        private String format;
     }
 
     private static final class GameResponseRequest {

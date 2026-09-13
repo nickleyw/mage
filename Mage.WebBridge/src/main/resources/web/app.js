@@ -1197,7 +1197,16 @@ function renderGameStatus(game) {
     gameStatus.dataset.state = 'action';
     gameStatus.querySelector('.game-status-mark').textContent = '!';
     gameStatusTitle.textContent = 'Your action is required';
-    gameStatusDetail.textContent = promptMessage || 'Use the highlighted cards or the response buttons below.';
+    const notice = cleanDisplayText(game.notice);
+    gameStatusDetail.textContent = [promptMessage || 'Use the highlighted cards or the response buttons below.', notice]
+      .filter(Boolean).join(' · ');
+    return;
+  }
+  if (game.notice) {
+    gameStatus.dataset.state = game.noticeKind === 'error' ? 'ended' : 'action';
+    gameStatus.querySelector('.game-status-mark').textContent = game.noticeKind === 'error' ? '×' : '!';
+    gameStatusTitle.textContent = game.noticeKind === 'error' ? 'XMage reported a game error' : 'XMage message';
+    gameStatusDetail.textContent = cleanDisplayText(game.notice);
     return;
   }
   if (me?.priority || (game.priorityPlayer && game.priorityPlayer === me?.name)) {

@@ -30,6 +30,8 @@ const soloFormat = document.querySelector('#solo-format');
 const soloStartButton = document.querySelector('#solo-start-button');
 const soloMessage = document.querySelector('#solo-message');
 const selfPlaySwitcher = document.querySelector('#self-play-switcher');
+const selfPlaySummaryTitle = document.querySelector('#self-play-summary-title');
+const selfPlaySummaryDetail = document.querySelector('#self-play-summary-detail');
 const perspectiveButtons = [...document.querySelectorAll('[data-perspective]')];
 const lobbyMessage = document.querySelector('#lobby-message');
 const gamePanel = document.querySelector('#game-panel');
@@ -270,16 +272,54 @@ function renderSolo(snapshot = currentSnapshot) {
   }
 }
 
+function selfPlayPlayerState(selfPlay, perspective) {
+  const prefix = perspective === 1 ? 'playerOne' : 'playerTwo';
+  return {
+    perspective,
+    name: selfPlay[prefix],
+    needsAction: Boolean(selfPlay[`${prefix}NeedsAction`]),
+    needsSideboard: Boolean(selfPlay[`${prefix}NeedsSideboard`]),
+    connected: selfPlay[`${prefix}Connected`] !== false
+  };
+}
+
 function renderSelfPlaySwitcher(selfPlay) {
   selfPlaySwitcher.hidden = !selfPlay?.active;
   if (!selfPlay?.active) return;
+  const players = [selfPlayPlayerState(selfPlay, 1), selfPlayPlayerState(selfPlay, 2)];
+  const viewing = players[selfPlay.perspective === 2 ? 1 : 0];
+  const required = players.filter(player => player.needsAction || player.needsSideboard);
+
+  if (required.length === 1) {
+    const player = required[0];
+    selfPlaySummaryTitle.textContent = `Player ${player.perspective} · ${player.name} needs ${player.needsSideboard ? 'sideboarding' : 'a response'}`;
+    selfPlaySummaryDetail.textContent = player.perspective === viewing.perspective
+      ? 'You are viewing the correct side. Complete the highlighted XMage prompt below.'
+      : `Switch to Player ${player.perspective} to continue the match.`;
+  } else if (required.length > 1) {
+    selfPlaySummaryTitle.textContent = 'Both players have pending responses';
+    selfPlaySummaryDetail.textContent = 'Complete the currently viewed side, then switch players.';
+  } else {
+    selfPlaySummaryTitle.textContent = `Viewing Player ${viewing.perspective} · ${viewing.name}`;
+    selfPlaySummaryDetail.textContent = 'No explicit response is pending on either side; follow the turn and priority status below.';
+  }
+
   perspectiveButtons.forEach(button => {
-    const perspective = Number(button.dataset.perspective);
-    const name = perspective === 1 ? selfPlay.playerOne : selfPlay.playerTwo;
-    const needsAction = perspective === 1 ? selfPlay.playerOneNeedsAction : selfPlay.playerTwoNeedsAction;
-    button.textContent = `Player ${perspective} · ${name}${needsAction ? ' · Action' : ''}`;
-    button.classList.toggle('active', perspective === selfPlay.perspective);
-    button.disabled = perspective === selfPlay.perspective;
+    const player = players[Number(button.dataset.perspective) - 1];
+    const status = !player.connected ? 'Disconnected'
+      : player.needsSideboard ? 'Sideboard required'
+      : player.needsAction ? 'Action required'
+      : player.perspective === viewing.perspective ? 'Viewing'
+      : 'View';
+    button.replaceChildren();
+    const identity = document.createElement('strong');
+    identity.textContent = `Player ${player.perspective} · ${player.name}`;
+    const state = document.createElement('span');
+    state.textContent = status;
+    button.append(identity, state);
+    button.classList.toggle('active', player.perspective === viewing.perspective);
+    button.classList.toggle('needs-action', player.needsAction || player.needsSideboard);
+    button.disabled = player.perspective === viewing.perspective || !player.connected;
   });
 }
 
@@ -1231,6 +1271,18 @@ function renderGameStatus(game) {
     gameStatusDetail.textContent = [promptMessage || 'Use the highlighted cards or the response buttons below.', notice]
       .filter(Boolean).join(' · ');
     return;
+  }
+  const selfPlay = currentSnapshot.selfPlay;
+  if (selfPlay?.active) {
+    const otherPerspective = selfPlay.perspective === 1 ? 2 : 1;
+    const other = selfPlayPlayerState(selfPlay, otherPerspective);
+    if (other.needsAction || other.needsSideboard) {
+      gameStatus.dataset.state = 'action';
+      gameStatus.querySelector('.game-status-mark').textContent = '↔';
+      gameStatusTitle.textContent = `Player ${other.perspective} · ${other.name} needs ${other.needsSideboard ? 'sideboarding' : 'a response'}`;
+      gameStatusDetail.textContent = `Switch to Player ${other.perspective} using Solo control above to continue.`;
+      return;
+    }
   }
   if (game.notice) {
     gameStatus.dataset.state = game.noticeKind === 'error' ? 'ended' : 'action';

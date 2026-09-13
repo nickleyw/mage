@@ -247,8 +247,23 @@
       </div>
       <button id="close-card-dialog" class="icon-button" type="button" aria-label="Close">×</button>
     </div>
-    <p id="card-dialog-type" class="card-dialog-type"></p>
-    <p id="card-dialog-action" class="card-dialog-action"></p>
+    <div class="card-dialog-body">
+      <div id="card-art-panel" class="card-art-panel" hidden>
+        <div class="card-art-frame">
+          <img id="card-art-image" alt="" decoding="async">
+          <div id="card-art-status" class="card-art-status" role="status">Loading card image…</div>
+        </div>
+        <div class="card-art-controls">
+          <button id="card-art-flip" class="button quiet compact" type="button" hidden>Show reverse face</button>
+          <a id="card-art-link" class="card-art-link" href="https://scryfall.com" target="_blank" rel="noopener noreferrer" hidden>View on Scryfall</a>
+        </div>
+      </div>
+      <div class="card-dialog-copy">
+        <p id="card-dialog-type" class="card-dialog-type"></p>
+        <p id="card-dialog-action" class="card-dialog-action"></p>
+        <p class="card-art-credit">Card imagery provided by Scryfall. Card text remains available if artwork cannot load.</p>
+      </div>
+    </div>
   </dialog>
 
   <dialog id="deck-dialog" class="deck-dialog">

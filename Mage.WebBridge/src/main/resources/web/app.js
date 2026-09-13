@@ -271,7 +271,9 @@ function renderLobby(snapshot) {
     state.className = 'table-state';
     state.textContent = table.stateText || table.state;
     const detail = document.createElement('p');
-    detail.textContent = [table.gameType, table.deckType, `${table.seats} seats`, table.controller]
+    detail.textContent = [table.gameType, table.deckType,
+      table.requiresDeck === false ? 'Deck supplied by event' : 'Bring your deck',
+      `${table.seats} seats`, table.controller]
       .filter(Boolean).join(' · ');
     topline.append(title, state);
     const actions = document.createElement('div');
@@ -280,7 +282,8 @@ function renderLobby(snapshot) {
     button.type = 'button';
     button.className = table.joined ? 'button quiet' : 'button primary compact';
     button.textContent = table.joined ? 'Leave table' : 'Join table';
-    button.disabled = tableActionBusy || (!table.joined && (!table.joinable || !selectedDeck() || Boolean(snapshot.joinedTableId)));
+    button.disabled = tableActionBusy || (!table.joined &&
+      (!table.joinable || (table.requiresDeck !== false && !selectedDeck()) || Boolean(snapshot.joinedTableId)));
     button.addEventListener('click', () => table.joined ? leaveTable(table) : joinTable(table));
     actions.append(button);
     card.append(topline, detail, actions);
@@ -770,9 +773,11 @@ async function joinTable(table) {
   tableActionBusy = true;
   renderLobby(currentSnapshot);
   lobbyMessage.className = 'lobby-message';
-  lobbyMessage.textContent = `Checking your selected deck for “${table.name || table.gameType}”…`;
+  lobbyMessage.textContent = table.requiresDeck === false
+    ? `Joining “${table.name || table.gameType}”; XMage will supply the limited card pool…`
+    : `Checking your selected deck for “${table.name || table.gameType}”…`;
   try {
-    const deck = await validateSelectedDeck();
+    const deck = table.requiresDeck === false ? null : await validateSelectedDeck();
     let password = '';
     if (table.passworded) {
       password = prompt('Enter the password for this XMage table:');
@@ -784,10 +789,17 @@ async function joinTable(table) {
     lobbyMessage.textContent = 'Sending a standard XMage join request…';
     await api('/api/tables/join', {
       method: 'POST',
-      body: JSON.stringify({tableId: table.id, deckName: deck.name, deckText: deck.text, password})
+      body: JSON.stringify({
+        tableId: table.id,
+        deckName: deck?.name || '',
+        deckText: deck?.text || '',
+        password
+      })
     });
     lobbyMessage.className = 'lobby-message success';
-    lobbyMessage.textContent = `Joined “${table.name || table.gameType}” with ${deck.name}.`;
+    lobbyMessage.textContent = deck
+      ? `Joined “${table.name || table.gameType}” with ${deck.name}.`
+      : `Joined “${table.name || table.gameType}”; XMage will supply your limited card pool.`;
     logActivity(`Joined table · ${table.name || table.gameType}`);
     await refresh();
   } catch (error) {

@@ -277,6 +277,10 @@ public final class BridgeServer {
             selfPlay.put("playerTwo", opponent.playerName());
             selfPlay.put("playerOneNeedsAction", bridgeSession.hasPendingPrompt());
             selfPlay.put("playerTwoNeedsAction", opponent.hasPendingPrompt());
+            selfPlay.put("playerOneNeedsSideboard", bridgeSession.hasPendingSideboard());
+            selfPlay.put("playerTwoNeedsSideboard", opponent.hasPendingSideboard());
+            selfPlay.put("playerOneConnected", bridgeSession.isSessionConnected());
+            selfPlay.put("playerTwoConnected", opponent.isSessionConnected());
             result.put("selfPlay", selfPlay);
         } else {
             result.put("selfPlay", null);

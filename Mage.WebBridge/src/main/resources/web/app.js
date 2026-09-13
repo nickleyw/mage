@@ -498,9 +498,13 @@ function showCardDetails(card, game) {
 
 function isCardSelectable(card, game) {
   const prompt = game?.prompt;
-  const target = (prompt?.targets || []).includes(card.id);
-  const offeredByPrompt = [...(prompt?.cards || []), ...(prompt?.otherCards || [])]
-    .some(candidate => candidate?.id === card.id);
+  const targets = prompt?.targets || [];
+  const possibleTargets = prompt?.possibleTargets || [];
+  const hasExplicitTargets = targets.length > 0 || possibleTargets.length > 0;
+  const target = targets.includes(card.id) || possibleTargets.includes(card.id);
+  const offeredByPrompt = !hasExplicitTargets &&
+    [...(prompt?.cards || []), ...(prompt?.otherCards || [])]
+      .some(candidate => candidate?.id === card.id);
   const selectionPrompt = prompt?.type === 'GAME_SELECT' || prompt?.type === 'GAME_PLAY_MANA';
   const objectPrompt = prompt?.type === 'GAME_TARGET' || selectionPrompt;
   return Boolean(prompt) && objectPrompt &&

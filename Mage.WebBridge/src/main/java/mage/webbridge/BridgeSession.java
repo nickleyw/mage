@@ -404,7 +404,7 @@ final class BridgeSession implements MageClient {
         if (!joined) {
             String reason = waitForJoinError();
             throw new IllegalStateException(reason == null || reason.trim().isEmpty()
-                    ? "XMage did not accept the table join request." : reason);
+                    ? rejectionHint(table) : reason);
         }
         joinedTableId = tableId;
         Map<String, Object> result = tableEvent(tableId, table.getTableName());
@@ -418,7 +418,7 @@ final class BridgeSession implements MageClient {
     /** XMage can deliver the useful server rejection just after joinTable returns false. */
     private String waitForJoinError() {
         String reason = session.getLastError();
-        for (int attempt = 0; attempt < 80
+        for (int attempt = 0; attempt < 200
                 && (reason == null || reason.trim().isEmpty())
                 && (lastError == null || lastError.trim().isEmpty()); attempt++) {
             try {
@@ -430,6 +430,25 @@ final class BridgeSession implements MageClient {
             reason = session.getLastError();
         }
         return reason == null || reason.trim().isEmpty() ? lastError : reason;
+    }
+
+    private String rejectionHint(TableView table) {
+        if (table.isPassworded()) {
+            return "XMage rejected the join. This table is password protected; check the table password.";
+        }
+        if (positiveNumber(table.getMinimumRating())) {
+            return "XMage rejected the join. This table requires a minimum rating of "
+                    + table.getMinimumRating() + ".";
+        }
+        return "XMage rejected the join without an explanation. The seat may have filled or the table may have closed; refresh and try another open table.";
+    }
+
+    private boolean positiveNumber(String value) {
+        try {
+            return Integer.parseInt(value == null ? "0" : value) > 0;
+        } catch (NumberFormatException ignored) {
+            return false;
+        }
     }
 
     synchronized Map<String, Object> leaveTable(String tableIdText) {
@@ -509,6 +528,8 @@ final class BridgeSession implements MageClient {
         item.put("limited", table.isLimited());
         item.put("requiresDeck", !table.isTournament() || !table.isLimited());
         item.put("passworded", table.isPassworded());
+        item.put("minimumRating", table.getMinimumRating());
+        item.put("maximumQuitRatio", table.getQuitRatio());
         item.put("spectatorsAllowed", table.getSpectatorsAllowed());
         item.put("details", table.getAdditionalInfoShort());
         item.put("joinable", table.getTableState() == TableState.WAITING);

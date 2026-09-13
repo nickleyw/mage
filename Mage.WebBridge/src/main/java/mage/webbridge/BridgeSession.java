@@ -576,6 +576,14 @@ final class BridgeSession implements MageClient {
         return currentPrompt != null;
     }
 
+    boolean hasPendingSideboard() {
+        return currentSideboard != null;
+    }
+
+    boolean isSessionConnected() {
+        return session.isConnected();
+    }
+
     /** XMage delivers join explanations on its callback channel, independently of the false RPC result. */
     private String waitForJoinError() {
         String reason = firstNonBlank(pendingJoinError, lastError, session.getLastError());

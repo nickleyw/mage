@@ -728,15 +728,28 @@ final class BridgeSession implements MageClient {
         if (message.getTargets() != null) {
             ids.addAll(message.getTargets());
         }
-        if (message.getCardsView1() != null) {
-            ids.addAll(message.getCardsView1().keySet());
-        }
-        if (message.getCardsView2() != null) {
-            ids.addAll(message.getCardsView2().keySet());
+        Object possibleTargets = currentPrompt.get("possibleTargets");
+        if (possibleTargets instanceof Iterable) {
+            for (Object possibleTarget : (Iterable<?>) possibleTargets) {
+                try {
+                    ids.add(UUID.fromString(String.valueOf(possibleTarget)));
+                } catch (IllegalArgumentException ignored) {
+                    // Ignore malformed client-facing metadata.
+                }
+            }
         }
         if ((method == ClientCallbackMethod.GAME_SELECT || method == ClientCallbackMethod.GAME_PLAY_MANA)
                 && view != null && view.getCanPlayObjects() != null) {
             ids.addAll(view.getCanPlayObjects().getObjects().keySet());
+        }
+        // Older XMage prompts may omit possibleTargets; their card dialog is then the candidate set.
+        if (ids.isEmpty() && allowsUuid(method)) {
+            if (message.getCardsView1() != null) {
+                ids.addAll(message.getCardsView1().keySet());
+            }
+            if (message.getCardsView2() != null) {
+                ids.addAll(message.getCardsView2().keySet());
+            }
         }
         currentAllowedIds = Collections.unmodifiableSet(ids);
 

@@ -7,12 +7,6 @@ import mage.interfaces.callback.ClientCallbackType;
 import mage.constants.ManaType;
 import mage.constants.TableState;
 import mage.constants.PlayerAction;
-import mage.constants.MatchBufferTime;
-import mage.constants.MatchTimeLimit;
-import mage.constants.MultiplayerAttackOption;
-import mage.constants.RangeOfInfluence;
-import mage.constants.SkillLevel;
-import mage.game.match.MatchOptions;
 import mage.players.PlayerType;
 import mage.players.net.UserData;
 import mage.players.net.UserGroup;
@@ -131,17 +125,6 @@ final class BridgeSession implements MageClient {
         List<Map<String, Object>> tables = new ArrayList<>();
         if (session.isConnected()) {
             result.put("sessionId", session.getSessionId());
-            List<String> aiTypes = new ArrayList<>();
-            PlayerType[] advertisedTypes = session.getPlayerTypes();
-            if (advertisedTypes != null) {
-                for (PlayerType type : advertisedTypes) {
-                    if (type != null && type.isAI() && type.isWorkablePlayer()) {
-                        aiTypes.add(type.toString());
-                    }
-                }
-            }
-            result.put("aiAvailable", !aiTypes.isEmpty());
-            result.put("aiTypes", aiTypes);
             UUID roomId = session.getMainRoomId();
             result.put("roomId", roomId == null ? null : roomId.toString());
             if (roomId != null) {
@@ -472,121 +455,6 @@ final class BridgeSession implements MageClient {
         result.put("limited", table.isLimited());
         events.publish("table.joined", result);
         return result;
-    }
-
-    synchronized Map<String, Object> startPractice(String playerDeckName, String playerDeckText,
-                                                    String opponentDeckName, String opponentDeckText,
-                                                    String requestedFormat) {
-        requireConnected();
-        if (joinedTableId != null) {
-            throw new IllegalStateException("Leave your current table before starting a practice game.");
-        }
-
-        DeckTextResolver.Result playerDeck = deckResolver.resolve(playerDeckName, playerDeckText);
-        DeckTextResolver.Result opponentDeck = deckResolver.resolve(opponentDeckName, opponentDeckText);
-        if (!playerDeck.canJoin()) {
-            throw new IllegalArgumentException("Your selected deck has unresolved or missing cards. Run Check for XMage first.");
-        }
-        if (!opponentDeck.canJoin()) {
-            throw new IllegalArgumentException("The AI opponent deck has unresolved or missing cards. Check that deck for XMage first.");
-        }
-
-        String format = requestedFormat == null ? "freeform" : requestedFormat.trim().toLowerCase();
-        String gameType = "Two Player Duel";
-        String deckType;
-        switch (format) {
-            case "standard": deckType = "Constructed - Standard"; break;
-            case "pioneer": deckType = "Constructed - Pioneer"; break;
-            case "modern": deckType = "Constructed - Modern"; break;
-            case "legacy": deckType = "Constructed - Legacy"; break;
-            case "vintage": deckType = "Constructed - Vintage"; break;
-            case "pauper": deckType = "Constructed - Pauper"; break;
-            case "premodern": deckType = "Constructed - Premodern"; break;
-            case "commander":
-                gameType = "Commander Two Player Duel";
-                deckType = "Variant Magic - Commander";
-                break;
-            case "freeform": deckType = "Constructed - Freeform"; break;
-            default: throw new IllegalArgumentException("Unsupported practice format: " + requestedFormat);
-        }
-
-        PlayerType aiType = selectPlayableAi();
-        if (aiType == null) {
-            throw new IllegalStateException("This XMage server has not enabled a playable AI seat. Try another server or play a constructed table against a person.");
-        }
-
-        UUID roomId = session.getMainRoomId();
-        String password = "practice-" + UUID.randomUUID();
-        MatchOptions options = new MatchOptions("Private practice · " + username, gameType, false);
-        options.getPlayerTypes().add(PlayerType.HUMAN);
-        options.getPlayerTypes().add(aiType);
-        options.setDeckType(deckType);
-        options.setAttackOption(MultiplayerAttackOption.LEFT);
-        options.setRange(RangeOfInfluence.ALL);
-        options.setWinsNeeded(1);
-        options.setMatchTimeLimit(MatchTimeLimit.NONE);
-        options.setMatchBufferTime(MatchBufferTime.NONE);
-        options.setFreeMulligans(1);
-        options.setSkillLevel(SkillLevel.CASUAL);
-        options.setRollbackTurnsAllowed(true);
-        options.setQuitRatio(100);
-        options.setMinimumRating(0);
-        options.setRated(false);
-        options.setSpectatorsAllowed(false);
-        options.setPassword(password);
-
-        events.publish("practice.starting", singletonMessage("Creating a private XMage table and seating the AI…"));
-        TableView table = session.createTable(roomId, options);
-        if (table == null) {
-            throw new IllegalStateException("XMage could not create the practice table.");
-        }
-
-        UUID tableId = table.getTableId();
-        boolean started = false;
-        try {
-            if (!session.joinTable(roomId, tableId, username, PlayerType.HUMAN, 1, playerDeck.deck(), password)) {
-                throw new IllegalStateException("XMage could not seat you at the practice table.");
-            }
-            if (!session.joinTable(roomId, tableId, "Practice Bot", aiType, 1,
-                    opponentDeck.deck(), password)) {
-                throw new IllegalStateException("XMage could not seat the AI player.");
-            }
-            joinedTableId = tableId;
-            if (!session.startMatch(roomId, tableId)) {
-                throw new IllegalStateException("XMage created the practice table but could not start the match.");
-            }
-            started = true;
-            Map<String, Object> result = tableEvent(tableId, table.getTableName());
-            result.put("started", true);
-            result.put("format", format);
-            result.put("opponent", "Practice Bot");
-            result.put("aiType", aiType.toString());
-            events.publish("practice.started", result);
-            return result;
-        } finally {
-            if (!started) {
-                joinedTableId = null;
-                session.removeTable(roomId, tableId);
-            }
-        }
-    }
-
-    private PlayerType selectPlayableAi() {
-        PlayerType selected = null;
-        PlayerType[] playerTypes = session.getPlayerTypes();
-        if (playerTypes != null) {
-            for (PlayerType type : playerTypes) {
-                if (type != null && type.isAI() && type.isWorkablePlayer()) {
-                    if (selected == null || type == PlayerType.COMPUTER_MAD) {
-                        selected = type;
-                    }
-                    if (type == PlayerType.COMPUTER_MAD) {
-                        break;
-                    }
-                }
-            }
-        }
-        return selected;
     }
 
     /** XMage delivers join explanations on its callback channel, independently of the false RPC result. */

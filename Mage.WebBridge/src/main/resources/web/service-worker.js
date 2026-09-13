@@ -1,4 +1,4 @@
-const CACHE = 'xmage-web-bridge-shell-v18';
+const CACHE = 'xmage-web-bridge-shell-v19';
 const SHELL = ['/', '/index.html', '/styles.css', '/app.js', '/manifest.webmanifest', '/app-icon.svg', '/apple-touch-icon.png'];
 
 self.addEventListener('install', event => {

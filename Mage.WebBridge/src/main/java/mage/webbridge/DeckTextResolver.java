@@ -89,6 +89,12 @@ final class DeckTextResolver {
 
             String cardName = cleanCardName(matcher.group(2));
             CardIndex.Printing card = cardIndex.find(cardName);
+            // Archidekt and other exporters use "Front // Back" for transform cards
+            // and MDFCs. XMage stores those under the front face, while true split
+            // cards have their complete combined name in the index.
+            if (card == null && cardName.contains(" // ")) {
+                card = cardIndex.find(cardName.substring(0, cardName.indexOf(" // ")));
+            }
             if (card == null) {
                 unresolved.put(cardName, unresolved.containsKey(cardName)
                         ? unresolved.get(cardName) + quantity : quantity);

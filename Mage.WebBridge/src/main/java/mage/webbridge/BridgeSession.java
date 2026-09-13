@@ -87,6 +87,7 @@ final class BridgeSession implements MageClient {
             throw new IllegalStateException("Disconnect the current XMage session first.");
         }
 
+        lastCallbackMessages.clear();
         host = requestedHost;
         port = requestedPort;
         username = requestedUsername;
@@ -153,6 +154,7 @@ final class BridgeSession implements MageClient {
         session.connectStop(false, false);
         state = "disconnected";
         joinedTableId = null;
+        lastCallbackMessages.clear();
         clearGame();
         return snapshot();
     }

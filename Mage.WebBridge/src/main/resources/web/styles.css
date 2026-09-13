@@ -400,3 +400,9 @@ footer { padding: 24px 20px calc(24px + env(safe-area-inset-bottom)); text-align
 .prompt-error { width: 100%; margin: 4px 0 0; color: var(--danger); font-weight: 750; }
 .spendable-mana { border: 2px solid var(--gold); cursor: pointer; min-height: 32px; }
 .spendable-mana:focus-visible { outline: 3px solid var(--gold); outline-offset: 2px; }
+
+.game-context-panel { grid-column: 1 / -1; display: grid; gap: 12px; padding: 14px; border: 1px solid var(--border); border-radius: 16px; background: rgba(12, 16, 21, .72); }
+.game-context-panel > h3 { margin: 0; }
+.game-context-group { display: grid; gap: 8px; padding-top: 10px; border-top: 1px solid var(--border); }
+.game-context-group:first-of-type { border-top: 0; padding-top: 0; }
+.combat-context { border-left: 4px solid var(--danger); padding-left: 10px; }

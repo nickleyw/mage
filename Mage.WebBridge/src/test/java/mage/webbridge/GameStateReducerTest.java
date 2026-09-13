@@ -2,10 +2,12 @@ package mage.webbridge;
 
 import mage.view.AbilityPickerView;
 import mage.view.GameClientMessage;
+import mage.choices.ChoiceImpl;
 import mage.util.MultiAmountMessage;
 import org.junit.jupiter.api.Test;
 
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -13,6 +15,7 @@ import java.util.Arrays;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class GameStateReducerTest {
 
@@ -39,6 +42,24 @@ class GameStateReducerTest {
         assertEquals("1. Cast the front face", items.get(0).get("label"));
         assertEquals(second.toString(), items.get(1).get("value"));
         assertEquals("2. Activate & draw", items.get(1).get("label"));
+    }
+
+    @Test
+    void exposesReplacementEffectRememberChoiceMetadata() {
+        ChoiceImpl choice = new ChoiceImpl(true);
+        choice.setChoices(new LinkedHashSet<>(Arrays.asList("Apply first", "Apply second")));
+        choice.setSpecial(true, false, "Remember answer", "Reuse this ordering next time");
+        GameClientMessage message = new GameClientMessage(null, null, choice);
+
+        Map<String, Object> prompt = new GameStateReducer().prompt("GAME_CHOOSE_CHOICE", 7, message);
+
+        assertTrue((Boolean) prompt.get("specialEnabled"));
+        assertFalse((Boolean) prompt.get("specialCanBeEmpty"));
+        assertEquals("Remember answer", prompt.get("specialText"));
+        assertEquals("Reuse this ordering next time", prompt.get("specialHint"));
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> items = (List<Map<String, Object>>) prompt.get("choiceItems");
+        assertEquals(2, items.size());
     }
 
     @Test

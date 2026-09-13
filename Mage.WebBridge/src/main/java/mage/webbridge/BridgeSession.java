@@ -33,6 +33,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 
 /** Owns the single XMage player session represented by this bridge process. */
 final class BridgeSession implements MageClient {
@@ -48,6 +50,8 @@ final class BridgeSession implements MageClient {
     private volatile int port;
     private volatile String username = "";
     private volatile String lastError = "";
+    private volatile String pendingJoinError = "";
+    private volatile CountDownLatch pendingJoinErrorSignal = new CountDownLatch(0);
     private volatile UUID joinedTableId;
     private volatile UUID currentGameId;
     private volatile Map<String, Object> currentGame;
@@ -396,6 +400,8 @@ final class BridgeSession implements MageClient {
         }
 
         lastError = "";
+        pendingJoinError = "";
+        pendingJoinErrorSignal = new CountDownLatch(1);
         boolean joined = table.isTournament()
                 ? session.joinTournamentTable(roomId, tableId, username, PlayerType.HUMAN, 1,
                         joinDeck, password == null ? "" : password)
@@ -415,21 +421,27 @@ final class BridgeSession implements MageClient {
         return result;
     }
 
-    /** XMage can deliver the useful server rejection just after joinTable returns false. */
+    /** XMage delivers join explanations on its callback channel, independently of the false RPC result. */
     private String waitForJoinError() {
-        String reason = session.getLastError();
-        for (int attempt = 0; attempt < 200
-                && (reason == null || reason.trim().isEmpty())
-                && (lastError == null || lastError.trim().isEmpty()); attempt++) {
+        String reason = firstNonBlank(pendingJoinError, lastError, session.getLastError());
+        if (reason == null) {
             try {
-                Thread.sleep(25L);
+                pendingJoinErrorSignal.await(12, TimeUnit.SECONDS);
             } catch (InterruptedException interrupted) {
                 Thread.currentThread().interrupt();
-                break;
             }
-            reason = session.getLastError();
+            reason = firstNonBlank(pendingJoinError, lastError, session.getLastError());
         }
-        return reason == null || reason.trim().isEmpty() ? lastError : reason;
+        return reason;
+    }
+
+    private String firstNonBlank(String... values) {
+        for (String value : values) {
+            if (value != null && !value.trim().isEmpty()) {
+                return value;
+            }
+        }
+        return null;
     }
 
     private String rejectionHint(TableView table) {
@@ -594,6 +606,10 @@ final class BridgeSession implements MageClient {
                 String title = messageData.size() > 0 ? String.valueOf(messageData.get(0)) : "XMage message";
                 String message = messageData.size() > 1 ? String.valueOf(messageData.get(1)) : title;
                 lastError = message;
+                if ("Join Table".equalsIgnoreCase(title)) {
+                    pendingJoinError = message;
+                    pendingJoinErrorSignal.countDown();
+                }
                 Map<String, Object> userMessage = singletonMessage(message);
                 userMessage.put("title", title);
                 events.publish("xmage.user-message", userMessage);

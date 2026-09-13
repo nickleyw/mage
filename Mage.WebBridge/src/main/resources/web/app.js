@@ -1000,11 +1000,15 @@ async function startPractice() {
     logActivity(`Practice game started · ${playerDeck.name} vs ${opponentDeck.name}`);
     await refresh();
   } catch (error) {
+    practiceBusy = false;
+    renderPractice(currentSnapshot);
     practiceMessage.className = 'lobby-message error';
     practiceMessage.textContent = error.message;
   } finally {
-    practiceBusy = false;
-    renderPractice(currentSnapshot);
+    if (practiceBusy) {
+      practiceBusy = false;
+      renderPractice(currentSnapshot);
+    }
   }
 }
 

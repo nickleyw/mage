@@ -22,6 +22,15 @@ const deleteDeckButton = document.querySelector('#delete-deck-button');
 const selectedDeckLabel = document.querySelector('#selected-deck-label');
 const validateDeckButton = document.querySelector('#validate-deck-button');
 const deckReadiness = document.querySelector('#deck-readiness');
+const soloPlayerDeck = document.querySelector('#solo-player-deck');
+const soloOpponentDeck = document.querySelector('#solo-opponent-deck');
+const soloOpponentUsername = document.querySelector('#solo-opponent-username');
+const soloOpponentPassword = document.querySelector('#solo-opponent-password');
+const soloFormat = document.querySelector('#solo-format');
+const soloStartButton = document.querySelector('#solo-start-button');
+const soloMessage = document.querySelector('#solo-message');
+const selfPlaySwitcher = document.querySelector('#self-play-switcher');
+const perspectiveButtons = [...document.querySelectorAll('[data-perspective]')];
 const lobbyMessage = document.querySelector('#lobby-message');
 const gamePanel = document.querySelector('#game-panel');
 const gameTurn = document.querySelector('#game-turn');
@@ -62,6 +71,7 @@ let eventAbort;
 let editingDeckId = null;
 let currentSnapshot = {connected: false, tables: [], joinedTableId: null};
 let tableActionBusy = false;
+let soloBusy = false;
 let gameResponseBusy = false;
 let gameResponseError = '';
 let gameViewSuppressed = false;
@@ -207,6 +217,72 @@ function selectedDeck() {
   return decks.find(deck => deck.id === selectedId) || null;
 }
 
+function suggestedSecondUsername(primaryName) {
+  const base = String(primaryName || 'player').toLowerCase().replace(/[^a-z0-9_]/g, '') || 'player';
+  return `${base.slice(0, 13)}2`;
+}
+
+function renderSolo(snapshot = currentSnapshot) {
+  const playerDeck = selectedDeck();
+  const previousOpponent = soloOpponentDeck.value;
+  soloPlayerDeck.textContent = playerDeck?.name || 'Select a deck above';
+  soloOpponentDeck.replaceChildren();
+
+  if (!decks.length) {
+    const option = document.createElement('option');
+    option.value = '';
+    option.textContent = 'Import a deck first';
+    soloOpponentDeck.append(option);
+  } else {
+    [...decks].sort((a, b) => a.name.localeCompare(b.name)).forEach(deck => {
+      const option = document.createElement('option');
+      option.value = deck.id;
+      option.textContent = deck.name;
+      soloOpponentDeck.append(option);
+    });
+    soloOpponentDeck.value = decks.some(deck => deck.id === previousOpponent)
+      ? previousOpponent : (decks.find(deck => deck.id !== playerDeck?.id)?.id || decks[0].id);
+  }
+
+  if (!soloOpponentUsername.value && snapshot?.username) {
+    soloOpponentUsername.value = suggestedSecondUsername(snapshot.username);
+  }
+  const active = Boolean(snapshot?.selfPlay?.active);
+  const canStart = snapshot?.connected && playerDeck && soloOpponentDeck.value
+    && !snapshot.joinedTableId && !active && !soloBusy;
+  soloOpponentDeck.disabled = soloBusy || active;
+  soloOpponentUsername.disabled = soloBusy || active;
+  soloOpponentPassword.disabled = soloBusy || active;
+  soloFormat.disabled = soloBusy || active;
+  soloStartButton.disabled = !canStart;
+  soloStartButton.textContent = soloBusy ? 'Starting…' : 'Start solo match';
+
+  soloMessage.className = 'lobby-message';
+  if (active) {
+    soloMessage.className = 'lobby-message success';
+    soloMessage.textContent = 'Solo match active. Use the Player 1 and Player 2 controls above the battlefield to change perspectives.';
+  } else if (!snapshot?.connected) {
+    soloMessage.textContent = 'Connect and select two decks to begin.';
+  } else if (!playerDeck) {
+    soloMessage.textContent = 'Select Player 1’s deck above.';
+  } else {
+    soloMessage.textContent = 'Player 2 connects as a second ordinary human seat. Use a unique username for that seat.';
+  }
+}
+
+function renderSelfPlaySwitcher(selfPlay) {
+  selfPlaySwitcher.hidden = !selfPlay?.active;
+  if (!selfPlay?.active) return;
+  perspectiveButtons.forEach(button => {
+    const perspective = Number(button.dataset.perspective);
+    const name = perspective === 1 ? selfPlay.playerOne : selfPlay.playerTwo;
+    const needsAction = perspective === 1 ? selfPlay.playerOneNeedsAction : selfPlay.playerTwoNeedsAction;
+    button.textContent = `Player ${perspective} · ${name}${needsAction ? ' · Action' : ''}`;
+    button.classList.toggle('active', perspective === selfPlay.perspective);
+    button.disabled = perspective === selfPlay.perspective;
+  });
+}
+
 function renderDecks() {
   const query = deckSearch.value.trim().toLowerCase();
   const selectedId = localStorage.getItem(SELECTED_DECK_KEY);
@@ -218,6 +294,7 @@ function renderDecks() {
   const selected = decks.find(deck => deck.id === selectedId);
   selectedDeckLabel.textContent = selected ? `Selected: ${selected.name}` : 'No deck selected';
   validateDeckButton.disabled = !selected;
+  renderSolo(currentSnapshot);
 
   visible.forEach(deck => {
     const parsed = parseDeckText(deck.text);
@@ -276,6 +353,8 @@ function setStatus(state) {
 
 function renderLobby(snapshot) {
   currentSnapshot = snapshot;
+  renderSolo(snapshot);
+  renderSelfPlaySwitcher(snapshot.selfPlay);
   renderGame(snapshot.game);
   renderSideboard(snapshot.sideboard);
   const tables = snapshot.tables || [];
@@ -1241,6 +1320,62 @@ async function validateSelectedDeck() {
   return deck;
 }
 
+async function startSoloMatch() {
+  const playerDeck = selectedDeck();
+  const opponentDeck = decks.find(deck => deck.id === soloOpponentDeck.value);
+  if (!playerDeck || !opponentDeck) {
+    soloMessage.className = 'lobby-message error';
+    soloMessage.textContent = 'Choose a deck for both players.';
+    return;
+  }
+  if (!soloOpponentUsername.reportValidity()) return;
+
+  soloBusy = true;
+  renderSolo(currentSnapshot);
+  soloMessage.className = 'lobby-message';
+  soloMessage.textContent = 'Checking both decks and connecting Player 2…';
+  try {
+    const snapshot = await api('/api/self-play/start', {
+      method: 'POST',
+      body: JSON.stringify({
+        deckName: playerDeck.name,
+        deckText: playerDeck.text,
+        opponentDeckName: opponentDeck.name,
+        opponentDeckText: opponentDeck.text,
+        opponentUsername: soloOpponentUsername.value.trim(),
+        opponentPassword: soloOpponentPassword.value,
+        format: soloFormat.value
+      })
+    });
+    soloMessage.className = 'lobby-message success';
+    soloMessage.textContent = 'Solo match created. Switch players above the battlefield whenever the other side needs an action.';
+    logActivity(`Solo match started · ${playerDeck.name} vs ${opponentDeck.name}`);
+    renderLobby(snapshot);
+  } catch (error) {
+    soloMessage.className = 'lobby-message error';
+    soloMessage.textContent = error.message;
+  } finally {
+    soloBusy = false;
+    renderSolo(currentSnapshot);
+  }
+}
+
+async function switchPerspective(perspective) {
+  perspectiveButtons.forEach(button => { button.disabled = true; });
+  try {
+    const snapshot = await api('/api/self-play/perspective', {
+      method: 'POST',
+      body: JSON.stringify({perspective})
+    });
+    gameResponseError = '';
+    renderLobby(snapshot);
+    requestAnimationFrame(() => gamePanel.scrollIntoView({block: 'start'}));
+  } catch (error) {
+    logActivity(`Could not switch players · ${error.message}`);
+    renderSelfPlaySwitcher(currentSnapshot.selfPlay);
+  }
+}
+
 async function joinTable(table) {
   tableActionBusy = true;
   renderLobby(currentSnapshot);
@@ -1355,25 +1490,30 @@ async function streamEvents() {
           if (!data) return;
           const event = JSON.parse(data.slice(6));
           if (shouldShowTechnicalEvent(event)) logActivity(describeEvent(event), event.timestamp);
-          if (event.type === 'session.connected') setStatus('connected');
-          if (event.type === 'session.disconnected') setStatus('disconnected');
-          if (event.type === 'session.error') setStatus('error');
+          const isPlayerTwoEvent = event.payload?.sessionRole === 'player2';
+          if (event.type === 'session.connected' && !isPlayerTwoEvent) setStatus('connected');
+          if (event.type === 'session.disconnected' && !isPlayerTwoEvent) setStatus('disconnected');
+          if (event.type === 'session.error' && !isPlayerTwoEvent) setStatus('error');
           if (event.type === 'xmage.user-message' && /join table|submit deck|load failed/i.test(event.payload?.title || '')) {
             lobbyMessage.className = 'lobby-message error';
             lobbyMessage.textContent = event.payload?.message || event.payload?.title;
           }
           if (event.type === 'table.joined' || event.type === 'table.left') refresh();
-          if (event.type === 'sideboard.started') {
-            currentSnapshot = {...currentSnapshot, sideboard: event.payload};
-            renderSideboard(event.payload);
-          }
-          if (event.type === 'sideboard.submitted') {
-            currentSnapshot = {...currentSnapshot, sideboard: null};
-            renderSideboard(null);
-          }
-          if (event.type === 'game.started' || event.type === 'game.state' || event.type === 'game.over') {
-            currentSnapshot = {...currentSnapshot, game: event.payload};
-            renderGame(event.payload);
+          if (event.type === 'selfplay.started') refresh();
+          if (event.type === 'sideboard.started' || event.type === 'sideboard.submitted'
+              || event.type === 'game.started' || event.type === 'game.state' || event.type === 'game.over') {
+            if (currentSnapshot.selfPlay?.active) {
+              refresh();
+            } else if (event.type === 'sideboard.started') {
+              currentSnapshot = {...currentSnapshot, sideboard: event.payload};
+              renderSideboard(event.payload);
+            } else if (event.type === 'sideboard.submitted') {
+              currentSnapshot = {...currentSnapshot, sideboard: null};
+              renderSideboard(null);
+            } else {
+              currentSnapshot = {...currentSnapshot, game: event.payload};
+              renderGame(event.payload);
+            }
           }
         });
       }
@@ -1443,6 +1583,8 @@ disconnectButton.addEventListener('click', async () => {
 });
 
 refreshButton.addEventListener('click', refresh);
+soloStartButton.addEventListener('click', startSoloMatch);
+perspectiveButtons.forEach(button => button.addEventListener('click', () => switchPerspective(Number(button.dataset.perspective))));
 clearButton.addEventListener('click', () => activityList.replaceChildren());
 sideboardSubmitButton.addEventListener('click', submitSideboard);
 concedeButton.addEventListener('click', concedeGame);

@@ -499,9 +499,12 @@ function showCardDetails(card, game) {
 function isCardSelectable(card, game) {
   const prompt = game?.prompt;
   const target = (prompt?.targets || []).includes(card.id);
+  const offeredByPrompt = [...(prompt?.cards || []), ...(prompt?.otherCards || [])]
+    .some(candidate => candidate?.id === card.id);
   const selectionPrompt = prompt?.type === 'GAME_SELECT' || prompt?.type === 'GAME_PLAY_MANA';
   const objectPrompt = prompt?.type === 'GAME_TARGET' || selectionPrompt;
-  return Boolean(prompt) && objectPrompt && (target || card.choosable || (selectionPrompt && card.playable));
+  return Boolean(prompt) && objectPrompt &&
+    (offeredByPrompt || target || card.choosable || (selectionPrompt && card.playable));
 }
 
 function renderCards(container, cards, emptyText, game) {

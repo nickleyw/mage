@@ -7,6 +7,12 @@ import mage.interfaces.callback.ClientCallbackType;
 import mage.constants.ManaType;
 import mage.constants.TableState;
 import mage.constants.PlayerAction;
+import mage.constants.MatchBufferTime;
+import mage.constants.MatchTimeLimit;
+import mage.constants.MultiplayerAttackOption;
+import mage.constants.RangeOfInfluence;
+import mage.constants.SkillLevel;
+import mage.game.match.MatchOptions;
 import mage.players.PlayerType;
 import mage.players.net.UserData;
 import mage.players.net.UserGroup;
@@ -46,6 +52,7 @@ final class BridgeSession implements MageClient {
 
     private final EventBroker events;
     private final Session session;
+    private final String sessionRole;
     private final DeckTextResolver deckResolver = new DeckTextResolver();
     private final GameStateReducer gameReducer = new GameStateReducer();
     private volatile String state = "disconnected";
@@ -71,7 +78,12 @@ final class BridgeSession implements MageClient {
     private final Map<ClientCallbackType, Long> lastCallbackMessages = new LinkedHashMap<>();
 
     BridgeSession(EventBroker events) {
+        this(events, "primary");
+    }
+
+    BridgeSession(EventBroker events, String sessionRole) {
         this.events = events;
+        this.sessionRole = sessionRole == null ? "primary" : sessionRole;
         this.session = new SessionImpl(this);
     }
 
@@ -457,6 +469,113 @@ final class BridgeSession implements MageClient {
         return result;
     }
 
+    synchronized Map<String, Object> startSelfPlay(BridgeSession opponent,
+                                                    String playerDeckName, String playerDeckText,
+                                                    String opponentDeckName, String opponentDeckText,
+                                                    String requestedFormat) {
+        requireConnected();
+        if (opponent == null || !opponent.session.isConnected()) {
+            throw new IllegalStateException("Player 2 could not connect to XMage.");
+        }
+        if (joinedTableId != null) {
+            throw new IllegalStateException("Leave your current table before starting a solo match.");
+        }
+
+        DeckTextResolver.Result playerDeck = deckResolver.resolve(playerDeckName, playerDeckText);
+        DeckTextResolver.Result opponentDeck = opponent.deckResolver.resolve(opponentDeckName, opponentDeckText);
+        if (!playerDeck.canJoin()) {
+            throw new IllegalArgumentException("Player 1's deck has unresolved or missing cards. Run Check for XMage first.");
+        }
+        if (!opponentDeck.canJoin()) {
+            throw new IllegalArgumentException("Player 2's deck has unresolved or missing cards. Check that deck for XMage first.");
+        }
+
+        String format = requestedFormat == null ? "freeform" : requestedFormat.trim().toLowerCase();
+        String gameType = "Two Player Duel";
+        String deckType;
+        switch (format) {
+            case "standard": deckType = "Constructed - Standard"; break;
+            case "pioneer": deckType = "Constructed - Pioneer"; break;
+            case "modern": deckType = "Constructed - Modern"; break;
+            case "legacy": deckType = "Constructed - Legacy"; break;
+            case "vintage": deckType = "Constructed - Vintage"; break;
+            case "pauper": deckType = "Constructed - Pauper"; break;
+            case "premodern": deckType = "Constructed - Premodern"; break;
+            case "commander":
+                gameType = "Commander Two Player Duel";
+                deckType = "Variant Magic - Commander";
+                break;
+            case "freeform": deckType = "Constructed - Freeform"; break;
+            default: throw new IllegalArgumentException("Unsupported solo format: " + requestedFormat);
+        }
+
+        UUID roomId = session.getMainRoomId();
+        String tablePassword = "solo-" + UUID.randomUUID();
+        MatchOptions options = new MatchOptions("Private solo table · " + username, gameType, false);
+        options.getPlayerTypes().add(PlayerType.HUMAN);
+        options.getPlayerTypes().add(PlayerType.HUMAN);
+        options.setDeckType(deckType);
+        options.setAttackOption(MultiplayerAttackOption.LEFT);
+        options.setRange(RangeOfInfluence.ALL);
+        options.setWinsNeeded(1);
+        options.setMatchTimeLimit(MatchTimeLimit.NONE);
+        options.setMatchBufferTime(MatchBufferTime.NONE);
+        options.setFreeMulligans(1);
+        options.setSkillLevel(SkillLevel.CASUAL);
+        options.setRollbackTurnsAllowed(true);
+        options.setQuitRatio(100);
+        options.setMinimumRating(0);
+        options.setRated(false);
+        options.setSpectatorsAllowed(false);
+        options.setPassword(tablePassword);
+
+        events.publish("selfplay.starting", singletonMessage("Creating a private two-player table…"));
+        TableView table = session.createTable(roomId, options);
+        if (table == null) {
+            throw new IllegalStateException("XMage could not create the solo table.");
+        }
+
+        UUID tableId = table.getTableId();
+        boolean started = false;
+        try {
+            if (!session.joinTable(roomId, tableId, username, PlayerType.HUMAN, 1,
+                    playerDeck.deck(), tablePassword)) {
+                throw new IllegalStateException("XMage could not seat Player 1.");
+            }
+            joinedTableId = tableId;
+            if (!opponent.session.joinTable(roomId, tableId, opponent.username, PlayerType.HUMAN, 1,
+                    opponentDeck.deck(), tablePassword)) {
+                throw new IllegalStateException("XMage could not seat Player 2.");
+            }
+            opponent.joinedTableId = tableId;
+            if (!session.startMatch(roomId, tableId)) {
+                throw new IllegalStateException("XMage created the solo table but could not start the match.");
+            }
+            started = true;
+            Map<String, Object> result = tableEvent(tableId, table.getTableName());
+            result.put("started", true);
+            result.put("format", format);
+            result.put("playerOne", username);
+            result.put("playerTwo", opponent.username);
+            events.publish("selfplay.started", result);
+            return result;
+        } finally {
+            if (!started) {
+                joinedTableId = null;
+                opponent.joinedTableId = null;
+                session.removeTable(roomId, tableId);
+            }
+        }
+    }
+
+    String playerName() {
+        return username;
+    }
+
+    boolean hasPendingPrompt() {
+        return currentPrompt != null;
+    }
+
     /** XMage delivers join explanations on its callback channel, independently of the false RPC result. */
     private String waitForJoinError() {
         String reason = firstNonBlank(pendingJoinError, lastError, session.getLastError());
@@ -559,6 +678,7 @@ final class BridgeSession implements MageClient {
         details.put("host", host);
         details.put("port", port);
         details.put("username", username);
+        details.put("sessionRole", sessionRole);
         return details;
     }
 

@@ -774,6 +774,19 @@ final class BridgeSession implements MageClient {
                 events.publish("xmage.user-message", userMessage);
                 return;
             }
+            if (callback.getMethod() == ClientCallbackMethod.GAME_ERROR && data != null) {
+                String errorMessage = String.valueOf(data);
+                lastError = errorMessage;
+                if (currentGame != null) {
+                    Map<String, Object> errored = new LinkedHashMap<>(currentGame);
+                    errored.put("notice", errorMessage);
+                    errored.put("noticeKind", "error");
+                    currentGame = errored;
+                    events.publish("game.state", errored);
+                }
+                events.publish("game.error", singletonMessage(errorMessage));
+                return;
+            }
             if (callback.getMethod() == ClientCallbackMethod.CHATMESSAGE
                     && data instanceof ChatMessage) {
                 ChatMessage chat = (ChatMessage) data;
@@ -868,6 +881,10 @@ final class BridgeSession implements MageClient {
                 String gameMessage = ((GameClientMessage) data).getMessage();
                 if (gameMessage != null && !gameMessage.trim().isEmpty()) {
                     reduced.put("message", gameMessage);
+                    if (method == ClientCallbackMethod.GAME_INFORM_PERSONAL) {
+                        reduced.put("notice", gameMessage);
+                        reduced.put("noticeKind", "message");
+                    }
                 }
             }
             currentGame = reduced;

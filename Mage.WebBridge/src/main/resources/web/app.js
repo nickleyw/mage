@@ -69,6 +69,7 @@ let currentSnapshot = {connected: false, tables: [], joinedTableId: null};
 let tableActionBusy = false;
 let practiceBusy = false;
 let gameResponseBusy = false;
+let gameResponseError = '';
 let gameViewSuppressed = false;
 let gameWasActive = false;
 let conceding = false;
@@ -661,7 +662,8 @@ async function loadCardArt(card) {
 function cardElement(card, game) {
   const element = document.createElement('article');
   const selectable = isCardSelectable(card, game);
-  element.className = `game-card${card.tapped ? ' tapped' : ''}${selectable ? ' selectable' : ''}${card.selected ? ' selected' : ''}`;
+  const selected = card.selected || (game?.prompt?.chosenTargets || []).includes(card.id);
+  element.className = `game-card${card.tapped ? ' tapped' : ''}${selectable ? ' selectable' : ''}${selected ? ' selected' : ''}`;
   element.dataset.cardId = card.id;
   const name = document.createElement('span');
   name.className = 'game-card-name';
@@ -839,9 +841,12 @@ function renderPrompt(prompt, game) {
       );
       break;
     }
-    case 'GAME_SELECT':
-      actions.append(responseButton(rightLabel || 'Pass priority / Done', 'boolean', false, 'primary'));
+    case 'GAME_SELECT': {
+      const specialLabel = prompt.choices?.specialButton;
+      if (specialLabel) actions.append(responseButton(specialLabel, 'string', 'special', 'primary'));
+      actions.append(responseButton(rightLabel || 'Pass priority / Done', 'boolean', false, specialLabel ? 'quiet' : 'primary'));
       break;
+    }
     case 'GAME_TARGET':
       if (!prompt.required) actions.append(responseButton(rightLabel || 'Cancel', 'boolean', false));
       break;
@@ -851,9 +856,12 @@ function renderPrompt(prompt, game) {
         responseButton('Choose pile 2', 'boolean', false)
       );
       break;
-    case 'GAME_PLAY_MANA':
+    case 'GAME_PLAY_MANA': {
+      const specialLabel = prompt.choices?.specialButton;
+      if (specialLabel) actions.append(responseButton(specialLabel, 'string', 'special', 'primary'));
       actions.append(responseButton(rightLabel || 'Cancel', 'boolean', false));
       break;
+    }
     case 'GAME_PLAY_XMANA':
       actions.append(
         responseButton(leftLabel || 'OK', 'boolean', true, 'primary'),
@@ -902,12 +910,35 @@ function renderPrompt(prompt, game) {
       if (prompt.choices?.canCancel) actions.append(responseButton('Cancel', 'boolean', false));
       break;
     }
-    case 'GAME_CHOOSE_CHOICE':
+    case 'GAME_CHOOSE_CHOICE': {
+      let rememberChoice = false;
+      if (prompt.specialEnabled && !prompt.specialCanBeEmpty) {
+        const remember = document.createElement('label');
+        remember.className = 'special-choice-toggle';
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.addEventListener('change', () => { rememberChoice = checkbox.checked; });
+        const copy = document.createElement('span');
+        copy.textContent = prompt.specialText || 'Remember this answer';
+        if (prompt.specialHint) copy.title = prompt.specialHint;
+        remember.append(checkbox, copy);
+        actions.append(remember);
+      }
       (prompt.choiceItems || []).forEach((choice, index) => {
-        actions.append(responseButton(choice.label || choice.value || 'Choose', 'string', choice.value, index === 0 ? 'primary' : 'quiet'));
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = `button ${index === 0 ? 'primary' : 'quiet'}`;
+        button.textContent = choice.label || choice.value || 'Choose';
+        button.disabled = gameResponseBusy;
+        button.addEventListener('click', () => {
+          const value = choice.special || !rememberChoice ? choice.value : `#${choice.value}`;
+          sendGameResponse('string', value === null ? null : String(value));
+        });
+        actions.append(button);
       });
       if (!prompt.required) actions.append(responseButton('Cancel', 'string', null));
       break;
+    }
     case 'GAME_CHOOSE_ABILITY':
       actions.classList.add('ability-actions');
       (prompt.abilityItems || []).forEach((choice, index) => {
@@ -919,6 +950,13 @@ function renderPrompt(prompt, game) {
       break;
   }
   if (actions.children.length) gamePrompt.append(actions);
+  if (gameResponseError) {
+    const error = document.createElement('p');
+    error.className = 'prompt-error';
+    error.setAttribute('role', 'alert');
+    error.textContent = gameResponseError;
+    gamePrompt.append(error);
+  }
 }
 
 async function sendGameResponse(action, value) {
@@ -926,6 +964,7 @@ async function sendGameResponse(action, value) {
   const prompt = game?.prompt;
   if (!prompt || gameResponseBusy) return;
   gameResponseBusy = true;
+  gameResponseError = '';
   renderGame(game);
   try {
     await api('/api/game/respond', {
@@ -936,7 +975,8 @@ async function sendGameResponse(action, value) {
     currentSnapshot = {...currentSnapshot, game: latest};
     renderGame(latest);
   } catch (error) {
-    logActivity(`Game response failed · ${error.message}`);
+    gameResponseError = error.message || 'XMage did not accept that action.';
+    logActivity(`Game response failed · ${gameResponseError}`);
     const latest = await api('/api/game').catch(() => null);
     if (latest) {
       currentSnapshot = {...currentSnapshot, game: latest};
@@ -977,11 +1017,22 @@ function renderGame(game) {
     summary.className = 'player-summary';
     const identity = document.createElement('div');
     identity.className = 'player-name';
-    if (game.prompt && (game.prompt.targets || []).includes(player.id)) {
+    const playerSelectable = game.prompt && [
+      ...(game.prompt.targets || []),
+      ...(game.prompt.possibleTargets || [])
+    ].includes(player.id);
+    if (playerSelectable) {
       identity.classList.add('selectable-player');
       identity.tabIndex = 0;
       identity.setAttribute('role', 'button');
-      identity.addEventListener('click', () => sendGameResponse('uuid', player.id));
+      const choosePlayer = () => sendGameResponse('uuid', player.id);
+      identity.addEventListener('click', choosePlayer);
+      identity.addEventListener('keydown', event => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          choosePlayer();
+        }
+      });
     }
     const name = document.createElement('h3');
     name.textContent = player.controlled ? `${player.name} · You` : player.name;
@@ -1004,9 +1055,15 @@ function renderGame(game) {
     });
     const mana = Object.entries(player.mana || {}).filter(([, value]) => value > 0);
     mana.forEach(([color, value]) => {
-      const symbol = document.createElement('span');
-      symbol.className = `mana mana-${color.toLowerCase()}`;
+      const canSpend = player.controlled && game.prompt?.type === 'GAME_PLAY_MANA';
+      const symbol = document.createElement(canSpend ? 'button' : 'span');
+      if (canSpend) symbol.type = 'button';
+      symbol.className = `mana mana-${color.toLowerCase()}${canSpend ? ' spendable-mana' : ''}`;
       symbol.textContent = `${color}:${value}`;
+      if (canSpend) {
+        symbol.setAttribute('aria-label', `Spend one ${color} mana`);
+        symbol.addEventListener('click', () => sendGameResponse('mana', color));
+      }
       stats.append(symbol);
     });
     (player.counters || []).forEach(counter => {

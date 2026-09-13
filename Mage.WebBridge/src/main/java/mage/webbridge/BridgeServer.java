@@ -28,6 +28,8 @@ public final class BridgeServer {
     private final Gson gson = new Gson();
     private final EventBroker events = new EventBroker(gson);
     private final BridgeSession bridgeSession = new BridgeSession(events);
+    private volatile BridgeSession selfPlayOpponent;
+    private volatile int selfPlayPerspective = 1;
     private final DeckImportService deckImports = new DeckImportService(gson);
     private final String accessToken;
     private final HttpServer server;
@@ -44,6 +46,8 @@ public final class BridgeServer {
         this.server.createContext("/api/decks/validate", this::handleDeckValidation);
         this.server.createContext("/api/tables/join", this::handleTableJoin);
         this.server.createContext("/api/tables/leave", this::handleTableLeave);
+        this.server.createContext("/api/self-play/start", this::handleSelfPlayStart);
+        this.server.createContext("/api/self-play/perspective", this::handleSelfPlayPerspective);
         this.server.createContext("/api/game", this::handleGame);
         this.server.createContext("/api/game/respond", this::handleGameResponse);
         this.server.createContext("/api/game/action", this::handleGameAction);
@@ -77,7 +81,7 @@ public final class BridgeServer {
     }
 
     private void stop() {
-        bridgeSession.disconnect();
+        disconnectAll();
         server.stop(1);
     }
 
@@ -112,9 +116,9 @@ public final class BridgeServer {
             return;
         }
         if ("GET".equals(exchange.getRequestMethod())) {
-            sendJson(exchange, 200, bridgeSession.snapshot());
+            sendJson(exchange, 200, sessionSnapshot());
         } else if ("DELETE".equals(exchange.getRequestMethod())) {
-            sendJson(exchange, 200, bridgeSession.disconnect());
+            sendJson(exchange, 200, disconnectAll());
         } else {
             methodNotAllowed(exchange, "GET, DELETE");
         }
@@ -186,11 +190,115 @@ public final class BridgeServer {
         }
     }
 
+    private void handleSelfPlayStart(HttpExchange exchange) throws IOException {
+        if (!authorize(exchange) || !method(exchange, "POST")) {
+            return;
+        }
+        BridgeSession opponent = null;
+        try {
+            if (selfPlayOpponent != null) {
+                throw new IllegalStateException("A solo match is already active. Disconnect before starting another.");
+            }
+            SelfPlayRequest request = gson.fromJson(readBody(exchange), SelfPlayRequest.class);
+            requireDeckRequest(request);
+            if (request.opponentDeckText == null || request.opponentDeckText.trim().isEmpty()) {
+                throw new IllegalArgumentException("Choose a deck for Player 2.");
+            }
+            String secondName = request.opponentUsername == null ? "" : request.opponentUsername.trim();
+            if (secondName.isEmpty()) {
+                throw new IllegalArgumentException("Player 2 needs a separate XMage username.");
+            }
+            if (secondName.equalsIgnoreCase(bridgeSession.playerName())) {
+                throw new IllegalArgumentException("Player 2's XMage username must be different from Player 1.");
+            }
+
+            Map<String, Object> primary = bridgeSession.snapshot();
+            if (!Boolean.TRUE.equals(primary.get("connected"))) {
+                throw new IllegalStateException("Connect Player 1 to an XMage server first.");
+            }
+            opponent = new BridgeSession(events, "player2");
+            opponent.connect(String.valueOf(primary.get("host")),
+                    ((Number) primary.get("port")).intValue(), secondName, request.opponentPassword);
+            bridgeSession.startSelfPlay(opponent, request.deckName, request.deckText,
+                    request.opponentDeckName, request.opponentDeckText, request.format);
+            selfPlayOpponent = opponent;
+            selfPlayPerspective = 1;
+            sendJson(exchange, 200, sessionSnapshot());
+        } catch (JsonParseException | IllegalArgumentException error) {
+            if (opponent != null && opponent != selfPlayOpponent) {
+                opponent.disconnect();
+            }
+            sendError(exchange, 400, error.getMessage());
+        } catch (IllegalStateException error) {
+            if (opponent != null && opponent != selfPlayOpponent) {
+                opponent.disconnect();
+            }
+            sendError(exchange, 502, error.getMessage());
+        }
+    }
+
+    private void handleSelfPlayPerspective(HttpExchange exchange) throws IOException {
+        if (!authorize(exchange) || !method(exchange, "POST")) {
+            return;
+        }
+        try {
+            SelfPlayPerspectiveRequest request = gson.fromJson(readBody(exchange), SelfPlayPerspectiveRequest.class);
+            if (selfPlayOpponent == null) {
+                throw new IllegalStateException("No solo match is active.");
+            }
+            if (request == null || (request.perspective != 1 && request.perspective != 2)) {
+                throw new IllegalArgumentException("Choose Player 1 or Player 2.");
+            }
+            selfPlayPerspective = request.perspective;
+            sendJson(exchange, 200, sessionSnapshot());
+        } catch (JsonParseException | IllegalArgumentException error) {
+            sendError(exchange, 400, error.getMessage());
+        } catch (IllegalStateException error) {
+            sendError(exchange, 409, error.getMessage());
+        }
+    }
+
+    private synchronized BridgeSession activeGameSession() {
+        return selfPlayPerspective == 2 && selfPlayOpponent != null
+                ? selfPlayOpponent : bridgeSession;
+    }
+
+    private synchronized Map<String, Object> sessionSnapshot() {
+        Map<String, Object> result = bridgeSession.snapshot();
+        BridgeSession opponent = selfPlayOpponent;
+        if (opponent != null) {
+            BridgeSession active = activeGameSession();
+            result.put("game", active.gameSnapshot());
+            result.put("sideboard", active.sideboardSnapshot());
+            Map<String, Object> selfPlay = new LinkedHashMap<>();
+            selfPlay.put("active", true);
+            selfPlay.put("perspective", selfPlayPerspective);
+            selfPlay.put("playerOne", bridgeSession.playerName());
+            selfPlay.put("playerTwo", opponent.playerName());
+            selfPlay.put("playerOneNeedsAction", bridgeSession.hasPendingPrompt());
+            selfPlay.put("playerTwoNeedsAction", opponent.hasPendingPrompt());
+            result.put("selfPlay", selfPlay);
+        } else {
+            result.put("selfPlay", null);
+        }
+        return result;
+    }
+
+    private synchronized Map<String, Object> disconnectAll() {
+        BridgeSession opponent = selfPlayOpponent;
+        selfPlayOpponent = null;
+        selfPlayPerspective = 1;
+        if (opponent != null) {
+            opponent.disconnect();
+        }
+        return bridgeSession.disconnect();
+    }
+
     private void handleGame(HttpExchange exchange) throws IOException {
         if (!authorize(exchange) || !method(exchange, "GET")) {
             return;
         }
-        sendJson(exchange, 200, bridgeSession.gameSnapshot());
+        sendJson(exchange, 200, activeGameSession().gameSnapshot());
     }
 
     private void handleGameResponse(HttpExchange exchange) throws IOException {
@@ -202,7 +310,7 @@ public final class BridgeServer {
             if (request == null) {
                 throw new IllegalArgumentException("A JSON request body is required.");
             }
-            sendJson(exchange, 200, bridgeSession.respondToGame(
+            sendJson(exchange, 200, activeGameSession().respondToGame(
                     request.messageId, request.action, request.value));
         } catch (JsonParseException | IllegalArgumentException error) {
             sendError(exchange, 400, error.getMessage());
@@ -215,7 +323,7 @@ public final class BridgeServer {
         if (!authorize(exchange) || !method(exchange, "GET")) {
             return;
         }
-        Map<String, Object> state = bridgeSession.sideboardSnapshot();
+        Map<String, Object> state = activeGameSession().sideboardSnapshot();
         if (state == null) {
             state = new LinkedHashMap<>();
             state.put("active", false);
@@ -232,7 +340,7 @@ public final class BridgeServer {
             if (request == null || request.action == null) {
                 throw new IllegalArgumentException("A game action is required.");
             }
-            sendJson(exchange, 200, bridgeSession.performGameAction(request.action));
+            sendJson(exchange, 200, activeGameSession().performGameAction(request.action));
         } catch (JsonParseException | IllegalArgumentException error) {
             sendError(exchange, 400, error.getMessage());
         } catch (IllegalStateException error) {
@@ -249,7 +357,7 @@ public final class BridgeServer {
             if (request == null) {
                 throw new IllegalArgumentException("A JSON request body is required.");
             }
-            sendJson(exchange, 200, bridgeSession.submitSideboard(request.mainIds, request.sideboardIds));
+            sendJson(exchange, 200, activeGameSession().submitSideboard(request.mainIds, request.sideboardIds));
         } catch (JsonParseException | IllegalArgumentException error) {
             sendError(exchange, 400, error.getMessage());
         } catch (IllegalStateException error) {
@@ -367,6 +475,18 @@ public final class BridgeServer {
 
     private static final class LeaveTableRequest {
         private String tableId;
+    }
+
+    private static final class SelfPlayRequest extends DeckRequest {
+        private String opponentDeckName;
+        private String opponentDeckText;
+        private String opponentUsername;
+        private String opponentPassword;
+        private String format;
+    }
+
+    private static final class SelfPlayPerspectiveRequest {
+        private int perspective;
     }
 
     private static final class GameResponseRequest {

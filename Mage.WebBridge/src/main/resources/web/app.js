@@ -239,9 +239,10 @@ function renderPractice(snapshot = currentSnapshot) {
 
   const connected = Boolean(snapshot?.connected);
   const alreadySeated = Boolean(snapshot?.joinedTableId);
+  const aiAvailable = snapshot?.aiAvailable !== false;
   practiceOpponent.disabled = practiceBusy || !decks.length;
   practiceFormat.disabled = practiceBusy;
-  practiceStartButton.disabled = practiceBusy || !connected || !playerDeck || !decks.length || alreadySeated;
+  practiceStartButton.disabled = practiceBusy || !connected || !playerDeck || !decks.length || alreadySeated || !aiAvailable;
   practiceStartButton.textContent = practiceBusy ? 'Starting…' : 'Start practice game';
 
   if (!practiceBusy && !connected) {
@@ -250,6 +251,9 @@ function renderPractice(snapshot = currentSnapshot) {
   } else if (!practiceBusy && alreadySeated) {
     practiceMessage.className = 'lobby-message';
     practiceMessage.textContent = 'Leave your current table before starting a practice game.';
+  } else if (!practiceBusy && !aiAvailable) {
+    practiceMessage.className = 'lobby-message';
+    practiceMessage.textContent = 'AI practice is unavailable on this server. The public beta server’s “Computer” draft seats are draft-filling bots, not playable opponents. Connect to a private or local XMage server with MAD or Monte Carlo AI enabled.';
   } else if (!practiceBusy && playerDeck) {
     practiceMessage.className = 'lobby-message';
     practiceMessage.textContent = 'Freeform is recommended while testing interactions; choose a sanctioned format when you also want legality checks.';

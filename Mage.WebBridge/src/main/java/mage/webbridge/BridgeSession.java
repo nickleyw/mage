@@ -758,7 +758,7 @@ final class BridgeSession implements MageClient {
                 return;
             }
             if (!callbackMethod.getType().canComeInAnyOrder()) {
-                lastCallbackMessages.put(callbackMethod.getType(), callback.getMessageId());
+                lastCallbackMessages.put(callbackMethod.getType(), (long) callback.getMessageId());
             }
         }
         Map<String, Object> payload = new LinkedHashMap<>();

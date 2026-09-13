@@ -22,6 +22,11 @@ const deleteDeckButton = document.querySelector('#delete-deck-button');
 const selectedDeckLabel = document.querySelector('#selected-deck-label');
 const validateDeckButton = document.querySelector('#validate-deck-button');
 const deckReadiness = document.querySelector('#deck-readiness');
+const practicePlayerDeck = document.querySelector('#practice-player-deck');
+const practiceOpponent = document.querySelector('#practice-opponent');
+const practiceFormat = document.querySelector('#practice-format');
+const practiceStartButton = document.querySelector('#practice-start-button');
+const practiceMessage = document.querySelector('#practice-message');
 const lobbyMessage = document.querySelector('#lobby-message');
 const gamePanel = document.querySelector('#game-panel');
 const gameTurn = document.querySelector('#game-turn');
@@ -57,6 +62,7 @@ let eventAbort;
 let editingDeckId = null;
 let currentSnapshot = {connected: false, tables: [], joinedTableId: null};
 let tableActionBusy = false;
+let practiceBusy = false;
 let gameResponseBusy = false;
 let gameViewSuppressed = false;
 let gameWasActive = false;
@@ -191,6 +197,49 @@ function selectedDeck() {
   return decks.find(deck => deck.id === selectedId) || null;
 }
 
+function renderPractice(snapshot = currentSnapshot) {
+  const playerDeck = selectedDeck();
+  const previousOpponent = practiceOpponent.value;
+  practicePlayerDeck.textContent = playerDeck?.name || 'Select a deck above';
+  practiceOpponent.replaceChildren();
+
+  if (!decks.length) {
+    const option = document.createElement('option');
+    option.value = '';
+    option.textContent = 'Import a deck first';
+    practiceOpponent.append(option);
+  } else {
+    [...decks].sort((a, b) => a.name.localeCompare(b.name)).forEach(deck => {
+      const option = document.createElement('option');
+      option.value = deck.id;
+      option.textContent = deck.name;
+      practiceOpponent.append(option);
+    });
+    const preferred = decks.some(deck => deck.id === previousOpponent)
+      ? previousOpponent
+      : (playerDeck?.id || decks[0].id);
+    practiceOpponent.value = preferred;
+  }
+
+  const connected = Boolean(snapshot?.connected);
+  const alreadySeated = Boolean(snapshot?.joinedTableId);
+  practiceOpponent.disabled = practiceBusy || !decks.length;
+  practiceFormat.disabled = practiceBusy;
+  practiceStartButton.disabled = practiceBusy || !connected || !playerDeck || !decks.length || alreadySeated;
+  practiceStartButton.textContent = practiceBusy ? 'Starting…' : 'Start practice game';
+
+  if (!practiceBusy && !connected) {
+    practiceMessage.className = 'lobby-message';
+    practiceMessage.textContent = 'Connect to an XMage server and select a deck to begin.';
+  } else if (!practiceBusy && alreadySeated) {
+    practiceMessage.className = 'lobby-message';
+    practiceMessage.textContent = 'Leave your current table before starting a practice game.';
+  } else if (!practiceBusy && playerDeck) {
+    practiceMessage.className = 'lobby-message';
+    practiceMessage.textContent = 'Freeform is recommended while testing interactions; choose a sanctioned format when you also want legality checks.';
+  }
+}
+
 function renderDecks() {
   const query = deckSearch.value.trim().toLowerCase();
   const selectedId = localStorage.getItem(SELECTED_DECK_KEY);
@@ -202,6 +251,7 @@ function renderDecks() {
   const selected = decks.find(deck => deck.id === selectedId);
   selectedDeckLabel.textContent = selected ? `Selected: ${selected.name}` : 'No deck selected';
   validateDeckButton.disabled = !selected;
+  renderPractice(currentSnapshot);
 
   visible.forEach(deck => {
     const parsed = parseDeckText(deck.text);
@@ -921,6 +971,43 @@ async function validateSelectedDeck() {
   return deck;
 }
 
+async function startPractice() {
+  const playerDeck = selectedDeck();
+  const opponentDeck = decks.find(deck => deck.id === practiceOpponent.value);
+  if (!playerDeck || !opponentDeck) {
+    practiceMessage.className = 'lobby-message error';
+    practiceMessage.textContent = 'Choose both your deck and an AI opponent deck.';
+    return;
+  }
+
+  practiceBusy = true;
+  renderPractice(currentSnapshot);
+  practiceMessage.className = 'lobby-message';
+  practiceMessage.textContent = 'Resolving both decks, creating a private table, and seating XMage’s AI…';
+  try {
+    await api('/api/practice/start', {
+      method: 'POST',
+      body: JSON.stringify({
+        deckName: playerDeck.name,
+        deckText: playerDeck.text,
+        opponentDeckName: opponentDeck.name,
+        opponentDeckText: opponentDeck.text,
+        format: practiceFormat.value
+      })
+    });
+    practiceMessage.className = 'lobby-message success';
+    practiceMessage.textContent = `Practice started: ${playerDeck.name} vs Practice Bot using ${opponentDeck.name}.`;
+    logActivity(`Practice game started · ${playerDeck.name} vs ${opponentDeck.name}`);
+    await refresh();
+  } catch (error) {
+    practiceMessage.className = 'lobby-message error';
+    practiceMessage.textContent = error.message;
+  } finally {
+    practiceBusy = false;
+    renderPractice(currentSnapshot);
+  }
+}
+
 async function joinTable(table) {
   tableActionBusy = true;
   renderLobby(currentSnapshot);
@@ -1042,7 +1129,7 @@ async function streamEvents() {
             lobbyMessage.className = 'lobby-message error';
             lobbyMessage.textContent = event.payload?.message || event.payload?.title;
           }
-          if (event.type === 'table.joined' || event.type === 'table.left') refresh();
+          if (event.type === 'table.joined' || event.type === 'table.left' || event.type === 'practice.started') refresh();
           if (event.type === 'sideboard.started') {
             currentSnapshot = {...currentSnapshot, sideboard: event.payload};
             renderSideboard(event.payload);
@@ -1123,6 +1210,7 @@ disconnectButton.addEventListener('click', async () => {
 });
 
 refreshButton.addEventListener('click', refresh);
+practiceStartButton.addEventListener('click', startPractice);
 clearButton.addEventListener('click', () => activityList.replaceChildren());
 sideboardSubmitButton.addEventListener('click', submitSideboard);
 concedeButton.addEventListener('click', concedeGame);

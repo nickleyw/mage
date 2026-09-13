@@ -93,12 +93,10 @@ main {
 
 .connect-panel { grid-column: 1 / -1; }
 .decks-panel { grid-column: 1 / -1; }
-.practice-panel { grid-column: 1 / -1; }
 .game-panel { grid-column: 1 / -1; }
 .sideboard-panel { grid-column: 1 / -1; }
 body.game-active .connect-panel,
 body.game-active .decks-panel,
-body.game-active .practice-panel,
 body.game-active .lobby-panel,
 body.game-active .activity-panel { display: none; }
 body.game-active main { display: block; width: min(1440px, calc(100% - 24px)); }
@@ -187,13 +185,6 @@ textarea:focus { border-color: var(--gold); box-shadow: 0 0 0 3px rgba(213, 174,
 .lobby-message.error, .deck-readiness.error { color: var(--red); }
 .lobby-message.success, .deck-readiness.success { color: var(--green); }
 
-.practice-intro { max-width: 760px; margin: -8px 0 18px; color: var(--muted); font-size: .86rem; line-height: 1.5; }
-.practice-grid { display: grid; grid-template-columns: 1.1fr 1fr 1fr auto; gap: 14px; align-items: end; }
-.practice-deck-summary { min-height: 48px; display: flex; flex-direction: column; justify-content: center; gap: 5px; }
-.practice-deck-summary span { color: var(--muted); font-size: .75rem; font-weight: 700; }
-.practice-deck-summary strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--gold-bright); font-size: .9rem; }
-.practice-panel .button.primary { min-height: 48px; }
-.practice-panel .lobby-message { margin: 15px 0 0; }
 select { appearance: none; padding: 0 38px 0 13px; background-image: linear-gradient(45deg, transparent 50%, var(--muted) 50%), linear-gradient(135deg, var(--muted) 50%, transparent 50%); background-position: calc(100% - 18px) 20px, calc(100% - 12px) 20px; background-size: 6px 6px; background-repeat: no-repeat; }
 
 .deck-toolbar { display: flex; align-items: end; justify-content: space-between; gap: 18px; margin-bottom: 16px; }
@@ -377,8 +368,6 @@ footer { padding: 24px 20px calc(24px + env(safe-area-inset-bottom)); text-align
   .game-prompt { top: calc(max(4px, env(safe-area-inset-top)) + 82px); }
   .player-summary { align-items: flex-start; }
   .player-stats { max-width: 58%; }
-  .practice-grid { grid-template-columns: 1fr; }
-  .practice-panel .button.primary { width: 100%; }
   .deck-toolbar { align-items: stretch; flex-direction: column; }
   .deck-toolbar p { margin: 0; }
   .selected-deck { align-items: stretch; justify-content: space-between; }

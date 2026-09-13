@@ -106,7 +106,7 @@ final class BridgeSession implements MageClient {
         connection.setPort(port);
         connection.setUsername(username);
         connection.setPassword(password == null ? "" : password);
-        connection.setUserIdStr("xmage-web-bridge");
+        connection.setUserIdStr("xmage-web-bridge:" + sessionRole + ":" + username);
         connection.setProxyType(Connection.ProxyType.NONE);
 
         UserData userData = UserData.getDefaultUserDataView();

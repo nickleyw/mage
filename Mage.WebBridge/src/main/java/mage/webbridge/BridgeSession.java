@@ -131,6 +131,17 @@ final class BridgeSession implements MageClient {
         List<Map<String, Object>> tables = new ArrayList<>();
         if (session.isConnected()) {
             result.put("sessionId", session.getSessionId());
+            List<String> aiTypes = new ArrayList<>();
+            PlayerType[] advertisedTypes = session.getPlayerTypes();
+            if (advertisedTypes != null) {
+                for (PlayerType type : advertisedTypes) {
+                    if (type != null && type.isAI() && type.isWorkablePlayer()) {
+                        aiTypes.add(type.toString());
+                    }
+                }
+            }
+            result.put("aiAvailable", !aiTypes.isEmpty());
+            result.put("aiTypes", aiTypes);
             UUID roomId = session.getMainRoomId();
             result.put("roomId", roomId == null ? null : roomId.toString());
             if (roomId != null) {
@@ -499,20 +510,7 @@ final class BridgeSession implements MageClient {
             default: throw new IllegalArgumentException("Unsupported practice format: " + requestedFormat);
         }
 
-        PlayerType aiType = null;
-        PlayerType[] playerTypes = session.getPlayerTypes();
-        if (playerTypes != null) {
-            for (PlayerType type : playerTypes) {
-                if (type != null && type.isAI() && type.isWorkablePlayer()) {
-                    if (aiType == null || type == PlayerType.COMPUTER_MAD) {
-                        aiType = type;
-                    }
-                    if (type == PlayerType.COMPUTER_MAD) {
-                        break;
-                    }
-                }
-            }
-        }
+        PlayerType aiType = selectPlayableAi();
         if (aiType == null) {
             throw new IllegalStateException("This XMage server has not enabled a playable AI seat. Try another server or play a constructed table against a person.");
         }
@@ -571,6 +569,24 @@ final class BridgeSession implements MageClient {
                 session.removeTable(roomId, tableId);
             }
         }
+    }
+
+    private PlayerType selectPlayableAi() {
+        PlayerType selected = null;
+        PlayerType[] playerTypes = session.getPlayerTypes();
+        if (playerTypes != null) {
+            for (PlayerType type : playerTypes) {
+                if (type != null && type.isAI() && type.isWorkablePlayer()) {
+                    if (selected == null || type == PlayerType.COMPUTER_MAD) {
+                        selected = type;
+                    }
+                    if (type == PlayerType.COMPUTER_MAD) {
+                        break;
+                    }
+                }
+            }
+        }
+        return selected;
     }
 
     /** XMage delivers join explanations on its callback channel, independently of the false RPC result. */

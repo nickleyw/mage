@@ -56,6 +56,11 @@ const cardDialog = document.querySelector('#card-dialog');
 const cardDialogName = document.querySelector('#card-dialog-name');
 const cardDialogType = document.querySelector('#card-dialog-type');
 const cardDialogAction = document.querySelector('#card-dialog-action');
+const cardArtPanel = document.querySelector('#card-art-panel');
+const cardArtImage = document.querySelector('#card-art-image');
+const cardArtStatus = document.querySelector('#card-art-status');
+const cardArtFlip = document.querySelector('#card-art-flip');
+const cardArtLink = document.querySelector('#card-art-link');
 const accessTokenInput = document.querySelector('#access-token');
 const rememberTokenInput = document.querySelector('#remember-token');
 let eventAbort;
@@ -75,6 +80,16 @@ let importedSourceUrl = '';
 const DECK_LIBRARY_KEY = 'xmage-web-bridge.decks.v1';
 const SELECTED_DECK_KEY = 'xmage-web-bridge.selected-deck.v1';
 const ACCESS_TOKEN_KEY = 'xmage-web-bridge.access-token.v1';
+const SCRYFALL_CACHE_KEY = 'xmage-web-bridge.scryfall.v1';
+const SCRYFALL_CACHE_TTL = 30 * 24 * 60 * 60 * 1000;
+const SCRYFALL_REQUEST_GAP = 125;
+let scryfallCache = loadScryfallCache();
+let scryfallQueue = Promise.resolve();
+let scryfallLastRequest = 0;
+let cardArtRequestId = 0;
+let currentCardArt = null;
+let currentCardArtFace = 0;
+const scryfallInflight = new Map();
 let decks = loadDecks();
 
 accessTokenInput.value = localStorage.getItem(ACCESS_TOKEN_KEY) || '';
@@ -473,6 +488,176 @@ async function submitSideboard() {
   }
 }
 
+function loadScryfallCache() {
+  try {
+    const cached = JSON.parse(localStorage.getItem(SCRYFALL_CACHE_KEY) || '{}');
+    return cached && typeof cached === 'object' && !Array.isArray(cached) ? cached : {};
+  } catch (_) {
+    return {};
+  }
+}
+
+function saveScryfallCache() {
+  try {
+    const entries = Object.entries(scryfallCache)
+      .sort((a, b) => (b[1]?.cachedAt || 0) - (a[1]?.cachedAt || 0))
+      .slice(0, 250);
+    scryfallCache = Object.fromEntries(entries);
+    localStorage.setItem(SCRYFALL_CACHE_KEY, JSON.stringify(scryfallCache));
+  } catch (_) {
+    // Card text still works when private browsing or storage limits prevent caching.
+  }
+}
+
+function scryfallKey(card) {
+  const set = String(card.setCode || '').trim().toLowerCase();
+  const number = String(card.cardNumber || '').trim().toLowerCase();
+  const name = String(card.name || '').trim().toLowerCase();
+  return set && number ? `print:${set}/${number}|${name}` : `name:${name}`;
+}
+
+function queuedScryfallFetch(url) {
+  const run = async () => {
+    const wait = Math.max(0, SCRYFALL_REQUEST_GAP - (Date.now() - scryfallLastRequest));
+    if (wait) await new Promise(resolve => setTimeout(resolve, wait));
+    scryfallLastRequest = Date.now();
+    const response = await fetch(url, {headers: {'Accept': 'application/json;q=0.9,*/*;q=0.8'}});
+    if (!response.ok) throw new Error(`Scryfall lookup failed (${response.status})`);
+    return response.json();
+  };
+  scryfallQueue = scryfallQueue.then(run, run);
+  return scryfallQueue;
+}
+
+function compactScryfallCard(data, requestedName) {
+  const imageFor = item => item?.image_uris?.normal || item?.image_uris?.large || item?.image_uris?.small;
+  let faces = (data.card_faces || [])
+    .filter(face => imageFor(face))
+    .map(face => ({name: face.name || data.name || requestedName, image: imageFor(face)}));
+  if (!faces.length && imageFor(data)) {
+    faces = [{name: data.name || requestedName, image: imageFor(data)}];
+  }
+  if (!faces.length) throw new Error('Scryfall returned no displayable card image.');
+  return {
+    name: data.name || requestedName,
+    uri: data.scryfall_uri || '',
+    faces,
+    cachedAt: Date.now()
+  };
+}
+
+async function resolveScryfallCard(card) {
+  const key = scryfallKey(card);
+  const cached = scryfallCache[key];
+  if (cached?.faces?.length && Date.now() - cached.cachedAt < SCRYFALL_CACHE_TTL) return cached;
+  if (scryfallInflight.has(key)) return scryfallInflight.get(key);
+
+  const lookup = (async () => {
+    const set = String(card.setCode || '').trim().toLowerCase();
+    const number = String(card.cardNumber || '').trim();
+    const name = String(card.name || '').trim();
+    let data;
+    if (set && number) {
+      try {
+        data = await queuedScryfallFetch(
+          `https://api.scryfall.com/cards/${encodeURIComponent(set)}/${encodeURIComponent(number)}`
+        );
+      } catch (_) {
+        data = null;
+      }
+    }
+    if (!data && name) {
+      try {
+        data = await queuedScryfallFetch(
+          `https://api.scryfall.com/cards/named?exact=${encodeURIComponent(name)}`
+        );
+      } catch (_) {
+        const frontName = name.split(/\s+\/\/\s+/)[0];
+        if (frontName === name) throw _;
+        data = await queuedScryfallFetch(
+          `https://api.scryfall.com/cards/named?exact=${encodeURIComponent(frontName)}`
+        );
+      }
+    }
+    if (!data) throw new Error('No Scryfall card match was found.');
+    const compact = compactScryfallCard(data, name);
+    scryfallCache[key] = compact;
+    saveScryfallCache();
+    return compact;
+  })().finally(() => scryfallInflight.delete(key));
+
+  scryfallInflight.set(key, lookup);
+  return lookup;
+}
+
+function chooseScryfallFace(art, requestedName) {
+  const wanted = String(requestedName || '').toLowerCase();
+  const index = art.faces.findIndex(face => {
+    const faceName = String(face.name || '').toLowerCase();
+    return wanted === faceName || wanted.startsWith(`${faceName} //`) || faceName.startsWith(`${wanted} //`);
+  });
+  return index < 0 ? 0 : index;
+}
+
+function renderCardArt() {
+  if (!currentCardArt?.faces?.length) return;
+  const face = currentCardArt.faces[currentCardArtFace] || currentCardArt.faces[0];
+  const requestId = cardArtRequestId;
+  cardArtStatus.hidden = false;
+  cardArtStatus.textContent = 'Loading card image…';
+  cardArtImage.hidden = true;
+  cardArtImage.alt = `${face.name || currentCardArt.name} card image`;
+  cardArtImage.onload = () => {
+    if (requestId !== cardArtRequestId) return;
+    cardArtImage.hidden = false;
+    cardArtStatus.hidden = true;
+  };
+  cardArtImage.onerror = () => {
+    if (requestId !== cardArtRequestId) return;
+    cardArtImage.hidden = true;
+    cardArtStatus.hidden = false;
+    cardArtStatus.textContent = 'Card image could not be loaded. Text details are still available.';
+  };
+  cardArtImage.src = face.image;
+  cardArtFlip.hidden = currentCardArt.faces.length < 2;
+  if (currentCardArt.faces.length > 1) {
+    const next = currentCardArt.faces[(currentCardArtFace + 1) % currentCardArt.faces.length];
+    cardArtFlip.textContent = `Show ${next.name || 'reverse face'}`;
+  }
+  cardArtLink.hidden = !currentCardArt.uri;
+  cardArtLink.href = currentCardArt.uri || 'https://scryfall.com';
+}
+
+async function loadCardArt(card) {
+  const requestId = ++cardArtRequestId;
+  currentCardArt = null;
+  currentCardArtFace = 0;
+  cardArtImage.removeAttribute('src');
+  cardArtImage.hidden = true;
+  cardArtFlip.hidden = true;
+  cardArtLink.hidden = true;
+
+  if (card.faceDown || !card.name) {
+    cardArtPanel.hidden = true;
+    return;
+  }
+
+  cardArtPanel.hidden = false;
+  cardArtStatus.hidden = false;
+  cardArtStatus.textContent = 'Loading card image…';
+  try {
+    const art = await resolveScryfallCard(card);
+    if (requestId !== cardArtRequestId) return;
+    currentCardArt = art;
+    currentCardArtFace = chooseScryfallFace(art, card.name);
+    renderCardArt();
+  } catch (_) {
+    if (requestId !== cardArtRequestId) return;
+    cardArtStatus.hidden = false;
+    cardArtStatus.textContent = 'Card image unavailable. Card text and actions still work normally.';
+  }
+}
+
 function cardElement(card, game) {
   const element = document.createElement('article');
   const selectable = isCardSelectable(card, game);
@@ -511,6 +696,18 @@ function cardElement(card, game) {
         choose();
       }
     });
+    if (!card.faceDown) {
+      const preview = document.createElement('button');
+      preview.type = 'button';
+      preview.className = 'game-card-preview';
+      preview.textContent = '◫';
+      preview.setAttribute('aria-label', `Preview ${name.textContent}`);
+      preview.addEventListener('click', event => {
+        event.stopPropagation();
+        showCardDetails(card, game);
+      });
+      element.append(preview);
+    }
   } else {
     element.tabIndex = 0;
     element.setAttribute('role', 'button');
@@ -544,6 +741,7 @@ function showCardDetails(card, game) {
     cardDialogAction.textContent = 'No action is available for this card right now. The banner at the top will change when XMage needs your response.';
   }
   cardDialog.showModal();
+  loadCardArt(card);
 }
 
 function isCardSelectable(card, game) {
@@ -1228,7 +1426,15 @@ resumeGameButton.addEventListener('click', () => {
   renderGame(currentSnapshot.game);
   requestAnimationFrame(() => gamePanel.scrollIntoView({block: 'start'}));
 });
-document.querySelector('#close-card-dialog').addEventListener('click', () => cardDialog.close());
+document.querySelector('#close-card-dialog').addEventListener('click', () => {
+  cardArtRequestId++;
+  cardDialog.close();
+});
+cardArtFlip.addEventListener('click', () => {
+  if (!currentCardArt?.faces?.length) return;
+  currentCardArtFace = (currentCardArtFace + 1) % currentCardArt.faces.length;
+  renderCardArt();
+});
 cardDialog.addEventListener('click', event => {
   if (event.target === cardDialog) cardDialog.close();
 });

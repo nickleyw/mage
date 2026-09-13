@@ -38,7 +38,11 @@
         </div>
       </div>
       <div id="self-play-switcher" class="self-play-switcher" hidden>
-        <span>You are controlling</span>
+        <div class="self-play-summary">
+          <span>Solo control</span>
+          <strong id="self-play-summary-title">Choose a player</strong>
+          <small id="self-play-summary-detail">Each side keeps its own hand and pending XMage response.</small>
+        </div>
         <div class="perspective-buttons" role="group" aria-label="Choose which player to control">
           <button class="button quiet compact" type="button" data-perspective="1">Player 1</button>
           <button class="button quiet compact" type="button" data-perspective="2">Player 2</button>

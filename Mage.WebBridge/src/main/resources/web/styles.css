@@ -239,10 +239,21 @@ select { appearance: none; padding: 0 38px 0 13px; background-image: linear-grad
 .deck-preview.valid { color: var(--green); }
 .deck-preview.invalid { color: var(--red); }
 .dialog-actions { display: grid; grid-template-columns: auto 1fr auto auto; gap: 9px; }
-.card-dialog { width: min(440px, calc(100% - 24px)); margin: auto; padding: 20px; border: 1px solid var(--line); border-radius: 18px; color: var(--text); background: var(--panel); box-shadow: 0 28px 90px rgba(0, 0, 0, .6); }
+.card-dialog { width: min(760px, calc(100% - 24px)); margin: auto; padding: 20px; border: 1px solid var(--line); border-radius: 18px; color: var(--text); background: var(--panel); box-shadow: 0 28px 90px rgba(0, 0, 0, .6); }
 .card-dialog::backdrop { background: rgba(5, 7, 10, .66); backdrop-filter: blur(4px); }
-.card-dialog-type { margin: 18px 0 10px; color: var(--muted); line-height: 1.4; }
+.card-dialog-body { margin-top: 18px; display: grid; grid-template-columns: minmax(220px, 310px) minmax(0, 1fr); gap: 20px; align-items: start; }
+.card-dialog-copy { min-width: 0; }
+.card-dialog-type { margin: 0 0 10px; color: var(--muted); line-height: 1.4; }
 .card-dialog-action { margin: 0; padding: 12px; border-radius: 10px; color: #efe4cc; background: #14171c; line-height: 1.45; }
+.card-art-panel[hidden], .card-art-status[hidden], .card-art-image[hidden], .card-art-controls [hidden] { display: none; }
+.card-art-frame { position: relative; width: 100%; min-height: 290px; border-radius: 14px; display: grid; place-items: center; overflow: hidden; background: #111419; box-shadow: 0 12px 30px rgba(0, 0, 0, .28); }
+.card-art-image { display: block; width: 100%; height: auto; border-radius: 14px; }
+.card-art-status { max-width: 220px; padding: 18px; color: var(--muted); text-align: center; font-size: .8rem; line-height: 1.45; }
+.card-art-controls { margin-top: 10px; display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.card-art-controls .button { min-height: 36px; padding: 0 10px; font-size: .72rem; }
+.card-art-link { color: var(--gold-bright); font-size: .72rem; font-weight: 700; text-decoration: none; }
+.card-art-link:hover, .card-art-link:focus { text-decoration: underline; }
+.card-art-credit { margin: 12px 2px 0; color: #7f8792; font-size: .67rem; line-height: 1.4; }
 
 .activity-list { min-height: 180px; max-height: 390px; margin: 0; padding: 0; overflow: auto; list-style: none; }
 .activity-list li { padding: 11px 0; border-top: 1px solid var(--line); display: grid; grid-template-columns: 70px 1fr; gap: 10px; color: #d5d9df; font-size: .83rem; line-height: 1.4; }
@@ -305,6 +316,8 @@ select { appearance: none; padding: 0 38px 0 13px; background-image: linear-grad
 .game-card.tapped { transform: none; border-color: rgba(213, 174, 97, .65); background: linear-gradient(145deg, #353124, #24221d); }
 .game-card.tapped::before { content: 'Tapped'; align-self: flex-end; color: var(--gold); font-size: .6rem; font-weight: 850; text-transform: uppercase; }
 .game-card.selectable { position: relative; padding-top: 30px; border: 2px solid var(--gold-bright); cursor: pointer; box-shadow: 0 0 0 3px rgba(213, 174, 97, .16), 0 8px 22px rgba(0, 0, 0, .24); touch-action: manipulation; }
+.game-card-preview { position: absolute; inset: 6px auto auto 6px; width: 25px; height: 25px; padding: 0; border: 1px solid rgba(244, 241, 233, .36); border-radius: 50%; display: grid; place-items: center; color: var(--text); background: rgba(18, 21, 26, .92); font-size: .75rem; line-height: 1; cursor: pointer; z-index: 2; }
+.game-card-preview:focus { outline: 2px solid var(--gold-bright); outline-offset: 2px; }
 .game-card-action { position: absolute; inset: 7px 7px auto auto; padding: 3px 7px; border-radius: 999px; color: #1d170c; background: var(--gold-bright); font-size: .62rem; font-weight: 900; letter-spacing: .03em; text-transform: uppercase; }
 .game-card.selectable:active { transform: scale(.98); }
 .game-card.selected { border-color: var(--green); box-shadow: 0 0 0 2px rgba(114, 201, 149, .2); }
@@ -370,6 +383,10 @@ footer { padding: 24px 20px calc(24px + env(safe-area-inset-bottom)); text-align
   .deck-toolbar p { margin: 0; }
   .selected-deck { align-items: stretch; justify-content: space-between; }
   .deck-list { grid-template-columns: 1fr; }
+  .card-dialog { width: calc(100% - 16px); max-height: calc(100dvh - 16px - env(safe-area-inset-top)); padding: 16px; overflow: auto; }
+  .card-dialog-body { grid-template-columns: 1fr; gap: 14px; }
+  .card-art-panel { width: min(300px, 100%); margin: 0 auto; }
+  .card-art-frame { min-height: 260px; }
   .deck-dialog { width: 100%; max-height: calc(100dvh - env(safe-area-inset-top)); margin: env(safe-area-inset-top) 0 0; border-radius: 18px 18px 0 0; }
   .deck-dialog form { padding: 18px; padding-bottom: calc(18px + env(safe-area-inset-bottom)); }
   .url-import { grid-template-columns: 1fr; }

@@ -749,8 +749,18 @@ function formatDeckCheck(result) {
     return {ok: false, text: `${result.mainCount} main · ${result.sideboardCount} sideboard. Not found in this XMage build: ${names}${unresolved.length > 4 ? ` and ${unresolved.length - 4} more` : ''}.`};
   }
   if (!result.canJoin) return {ok: false, text: 'No playable cards were resolved from this decklist.'};
-  const skipped = (result.skipped || []).length;
-  return {ok: true, text: `Ready for XMage: ${result.mainCount} main · ${result.sideboardCount} sideboard${skipped ? ` · ${skipped} line${skipped === 1 ? '' : 's'} skipped` : ''}.`};
+  const corrections = Object.entries(result.correctedNames || {});
+  const warnings = result.warnings || [];
+  const details = [];
+  if (corrections.length) {
+    details.push(`name fixes: ${corrections.slice(0, 3).map(([from, to]) => `${from} → ${to}`).join(', ')}${corrections.length > 3 ? ` and ${corrections.length - 3} more` : ''}`);
+  }
+  if (warnings.length) details.push(warnings.join(' '));
+  return {
+    ok: true,
+    warning: warnings.length > 0,
+    text: `Prepared for XMage: ${result.mainCount} main · ${result.sideboardCount} sideboard${details.length ? ` · ${details.join(' · ')}` : ''}.`
+  };
 }
 
 async function validateSelectedDeck() {
@@ -763,7 +773,7 @@ async function validateSelectedDeck() {
     body: JSON.stringify({deckName: deck.name, deckText: deck.text})
   });
   const formatted = formatDeckCheck(result);
-  deckReadiness.className = `deck-readiness ${formatted.ok ? 'success' : 'error'}`;
+  deckReadiness.className = `deck-readiness ${formatted.ok && !formatted.warning ? 'success' : 'error'}`;
   deckReadiness.textContent = formatted.text;
   if (!formatted.ok) throw new Error('Fix the selected deck before joining.');
   return deck;

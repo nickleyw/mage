@@ -815,7 +815,7 @@ function renderGameStatus(game) {
     gameStatus.dataset.state = 'ended';
     gameStatus.querySelector('.game-status-mark').textContent = '■';
     gameStatusTitle.textContent = 'Game ended';
-    gameStatusDetail.textContent = game.message || 'XMage has closed this game. You can return to the lobby or wait for sideboarding.';
+    gameStatusDetail.textContent = cleanDisplayText(game.message) || 'XMage has closed this game. You can return to the lobby or wait for sideboarding.';
     conceding = false;
     return;
   }
@@ -852,6 +852,13 @@ function renderGameStatus(game) {
     gameStatusTitle.textContent = game.activePlayer ? `${game.activePlayer}’s turn` : 'Game in progress';
     gameStatusDetail.textContent = 'No response is needed from you right now.';
   }
+}
+
+function cleanDisplayText(value) {
+  if (!value) return '';
+  const text = document.createElement('textarea');
+  text.innerHTML = String(value).replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, '');
+  return text.value;
 }
 
 async function concedeGame() {

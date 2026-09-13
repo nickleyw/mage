@@ -378,22 +378,28 @@ final class BridgeSession implements MageClient {
         }
 
         events.publish("table.joining", tableEvent(tableId, table.getTableName()));
-        DeckTextResolver.Result resolved = deckResolver.resolve(deckName, deckText);
-        if (!resolved.canJoin()) {
-            Map<String, Object> summary = resolved.summary();
-            events.publish("deck.rejected", summary);
-            if (!((Map<?, ?>) summary.get("unresolved")).isEmpty()) {
-                throw new IllegalArgumentException("Some card names could not be resolved. Review the deck validation details.");
+        boolean requiresDeck = !table.isTournament() || !table.isLimited();
+        DeckTextResolver.Result resolved = null;
+        DeckCardLists joinDeck = null;
+        if (requiresDeck) {
+            resolved = deckResolver.resolve(deckName, deckText);
+            if (!resolved.canJoin()) {
+                Map<String, Object> summary = resolved.summary();
+                events.publish("deck.rejected", summary);
+                if (!((Map<?, ?>) summary.get("unresolved")).isEmpty()) {
+                    throw new IllegalArgumentException("Some card names could not be resolved. Review the deck validation details.");
+                }
+                throw new IllegalArgumentException("The deck contains no resolved cards.");
             }
-            throw new IllegalArgumentException("The deck contains no resolved cards.");
+            joinDeck = resolved.deck();
         }
 
         lastError = "";
         boolean joined = table.isTournament()
                 ? session.joinTournamentTable(roomId, tableId, username, PlayerType.HUMAN, 1,
-                        resolved.deck(), password == null ? "" : password)
+                        joinDeck, password == null ? "" : password)
                 : session.joinTable(roomId, tableId, username, PlayerType.HUMAN, 1,
-                        resolved.deck(), password == null ? "" : password);
+                        joinDeck, password == null ? "" : password);
         if (!joined) {
             String reason = session.getLastError();
             throw new IllegalStateException(reason == null || reason.trim().isEmpty()
@@ -402,7 +408,7 @@ final class BridgeSession implements MageClient {
         joinedTableId = tableId;
         Map<String, Object> result = tableEvent(tableId, table.getTableName());
         result.put("joined", true);
-        result.put("deck", resolved.summary());
+        result.put("deck", resolved == null ? null : resolved.summary());\n        result.put("limited", table.isLimited());
         events.publish("table.joined", result);
         return result;
     }
@@ -480,7 +486,7 @@ final class BridgeSession implements MageClient {
         item.put("state", table.getTableState().name());
         item.put("stateText", table.getTableStateText());
         item.put("seats", table.getSeatsInfo());
-        item.put("tournament", table.isTournament());
+        item.put("tournament", table.isTournament());\n        item.put("limited", table.isLimited());\n        item.put("requiresDeck", !table.isTournament() || !table.isLimited());
         item.put("passworded", table.isPassworded());
         item.put("spectatorsAllowed", table.getSpectatorsAllowed());
         item.put("details", table.getAdditionalInfoShort());

@@ -82,6 +82,8 @@ final class GameStateReducer {
             }
         }
         prompt.put("targets", targets);
+        prompt.put("possibleTargets", optionIds(message.getOptions(), "possibleTargets"));
+        prompt.put("chosenTargets", optionIds(message.getOptions(), "chosenTargets"));
         Choice choice = message.getChoice();
         if (choice != null) {
             prompt.put("required", choice.isRequired());
@@ -268,6 +270,23 @@ final class GameStateReducer {
         List<String> result = new ArrayList<>();
         for (UUID value : values) {
             result.add(value.toString());
+        }
+        return result;
+    }
+
+    private List<String> optionIds(Map<String, Serializable> options, String key) {
+        List<String> result = new ArrayList<>();
+        if (options == null) {
+            return result;
+        }
+        Object values = options.get(key);
+        if (!(values instanceof Iterable)) {
+            return result;
+        }
+        for (Object value : (Iterable<?>) values) {
+            if (value instanceof UUID) {
+                result.add(value.toString());
+            }
         }
         return result;
     }

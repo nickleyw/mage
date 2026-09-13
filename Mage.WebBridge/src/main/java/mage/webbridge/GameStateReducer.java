@@ -101,6 +101,10 @@ final class GameStateReducer {
                     choices.add(choice(value, plainText(value), false));
                 }
             }
+            prompt.put("specialEnabled", choice.isSpecialEnabled());
+            prompt.put("specialCanBeEmpty", choice.isSpecialCanBeEmpty());
+            prompt.put("specialText", plainText(choice.getSpecialText()));
+            prompt.put("specialHint", plainText(choice.getSpecialHint()));
             if (choice.isSpecialEnabled() && choice.isSpecialCanBeEmpty()) {
                 choices.add(choice("#", plainText(choice.getSpecialText()), true));
             }

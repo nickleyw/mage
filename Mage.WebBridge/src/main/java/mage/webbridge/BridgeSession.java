@@ -418,6 +418,9 @@ final class BridgeSession implements MageClient {
         if (table.getTableState() != TableState.WAITING) {
             throw new IllegalArgumentException("That table is no longer waiting for players. Refresh the lobby.");
         }
+        if (table.isTournament() && table.isLimited()) {
+            throw new IllegalArgumentException("Draft and sealed deck construction are not available in this web build yet. Choose a constructed table.");
+        }
 
         events.publish("table.joining", tableEvent(tableId, table.getTableName()));
         boolean requiresDeck = !table.isTournament() || !table.isLimited();
@@ -686,6 +689,7 @@ final class BridgeSession implements MageClient {
         item.put("maximumQuitRatio", table.getQuitRatio());
         item.put("spectatorsAllowed", table.getSpectatorsAllowed());
         item.put("details", table.getAdditionalInfoShort());
+        item.put("webSupported", !(table.isTournament() && table.isLimited()));
         item.put("joinable", table.getTableState() == TableState.WAITING);
         item.put("joined", table.getTableId().equals(joinedTableId));
         return item;

@@ -135,43 +135,6 @@
       <div id="deck-list" class="deck-list" aria-live="polite"></div>
     </section>
 
-    <section id="practice-panel" class="panel practice-panel" aria-labelledby="practice-title">
-      <div class="section-heading">
-        <div>
-          <p class="step">Practice lab</p>
-          <h2 id="practice-title">Play against XMage AI</h2>
-        </div>
-        <span class="source-badge">Private · Unrated</span>
-      </div>
-      <p class="practice-intro">Test a deck and mechanical interactions against an AI player offered by the connected XMage server. The game uses the connected server’s real rules engine. Playable AI is often disabled on public servers because it requires substantial CPU time.</p>
-      <div class="practice-grid">
-        <div class="practice-deck-summary">
-          <span>Your deck</span>
-          <strong id="practice-player-deck">Select a deck above</strong>
-        </div>
-        <label class="field" for="practice-opponent">
-          AI opponent deck
-          <select id="practice-opponent"></select>
-        </label>
-        <label class="field" for="practice-format">
-          Rules and deck legality
-          <select id="practice-format">
-            <option value="freeform">Freeform — best for mechanics testing</option>
-            <option value="standard">Standard</option>
-            <option value="pioneer">Pioneer</option>
-            <option value="modern">Modern</option>
-            <option value="legacy">Legacy</option>
-            <option value="vintage">Vintage</option>
-            <option value="pauper">Pauper</option>
-            <option value="premodern">Premodern</option>
-            <option value="commander">Commander — two player</option>
-          </select>
-        </label>
-        <button id="practice-start-button" class="button primary" type="button">Start practice game</button>
-      </div>
-      <p id="practice-message" class="lobby-message" role="status">Connect to an XMage server and select a deck to begin.</p>
-    </section>
-
     <section class="panel lobby-panel" aria-labelledby="lobby-title">
       <div class="section-heading">
         <div>

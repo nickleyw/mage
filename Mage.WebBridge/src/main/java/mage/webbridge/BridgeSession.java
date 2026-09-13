@@ -401,16 +401,34 @@ final class BridgeSession implements MageClient {
                 : session.joinTable(roomId, tableId, username, PlayerType.HUMAN, 1,
                         joinDeck, password == null ? "" : password);
         if (!joined) {
-            String reason = session.getLastError();
+            String reason = waitForJoinError();
             throw new IllegalStateException(reason == null || reason.trim().isEmpty()
                     ? "XMage did not accept the table join request." : reason);
         }
         joinedTableId = tableId;
         Map<String, Object> result = tableEvent(tableId, table.getTableName());
         result.put("joined", true);
-        result.put("deck", resolved == null ? null : resolved.summary());\n        result.put("limited", table.isLimited());
+        result.put("deck", resolved == null ? null : resolved.summary());
+        result.put("limited", table.isLimited());
         events.publish("table.joined", result);
         return result;
+    }
+
+    /** XMage can deliver the useful server rejection just after joinTable returns false. */
+    private String waitForJoinError() {
+        String reason = session.getLastError();
+        for (int attempt = 0; attempt < 20
+                && (reason == null || reason.trim().isEmpty())
+                && (lastError == null || lastError.trim().isEmpty()); attempt++) {
+            try {
+                Thread.sleep(25L);
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+                break;
+            }
+            reason = session.getLastError();
+        }
+        return reason == null || reason.trim().isEmpty() ? lastError : reason;
     }
 
     synchronized Map<String, Object> leaveTable(String tableIdText) {
@@ -486,7 +504,9 @@ final class BridgeSession implements MageClient {
         item.put("state", table.getTableState().name());
         item.put("stateText", table.getTableStateText());
         item.put("seats", table.getSeatsInfo());
-        item.put("tournament", table.isTournament());\n        item.put("limited", table.isLimited());\n        item.put("requiresDeck", !table.isTournament() || !table.isLimited());
+        item.put("tournament", table.isTournament());
+        item.put("limited", table.isLimited());
+        item.put("requiresDeck", !table.isTournament() || !table.isLimited());
         item.put("passworded", table.isPassworded());
         item.put("spectatorsAllowed", table.getSpectatorsAllowed());
         item.put("details", table.getAdditionalInfoShort());

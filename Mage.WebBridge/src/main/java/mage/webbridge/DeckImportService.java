@@ -72,7 +72,7 @@ final class DeckImportService {
         for (JsonElement element : categories) {
             JsonObject category = element.getAsJsonObject();
             if (category.has("includedInDeck") && !category.get("includedInDeck").getAsBoolean()) {
-                excludedCategories.add(text(category, "name"));
+                excludedCategories.add(text(category, "name").toLowerCase(Locale.ENGLISH));
             }
         }
 
@@ -82,11 +82,13 @@ final class DeckImportService {
             JsonObject entry = element.getAsJsonObject();
             JsonArray cardCategories = entry.has("categories") ? entry.getAsJsonArray("categories") : new JsonArray();
             boolean excluded = false;
-            boolean side = false;
+            boolean side = booleanValue(entry, "commander") || booleanValue(entry, "isCommander")
+                    || booleanValue(entry, "companion") || booleanValue(entry, "isCompanion");
             for (JsonElement categoryElement : cardCategories) {
-                String category = categoryElement.getAsString();
-                excluded |= excludedCategories.contains(category);
+                String category = categoryElement.isJsonObject()
+                        ? text(categoryElement.getAsJsonObject(), "name") : categoryElement.getAsString();
                 String lower = category.toLowerCase(Locale.ENGLISH);
+                excluded |= excludedCategories.contains(lower);
                 side |= lower.equals("sideboard") || lower.equals("commander") || lower.equals("companion");
             }
             if (excluded) {
@@ -148,6 +150,11 @@ final class DeckImportService {
 
     private String text(JsonObject object, String field) {
         return object.has(field) && !object.get(field).isJsonNull() ? object.get(field).getAsString() : "";
+    }
+
+    private boolean booleanValue(JsonObject object, String field) {
+        return object.has(field) && !object.get(field).isJsonNull()
+                && object.get(field).isJsonPrimitive() && object.get(field).getAsBoolean();
     }
 
     static final class ImportedDeck {

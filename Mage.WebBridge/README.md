@@ -11,7 +11,7 @@ The current hosted compatibility build is [xmage-ipad-bridge.onrender.com](https
 
 - Connect to a normal XMage server; the form shows `beta.xmage.today:17171` as the default option.
 - Browse open tables and join supported constructed games with an imported deck.
-- Import decklists by pasted text, file, or public Archidekt, Moxfield, and MTGTop8 URL.
+- Import decklists by pasted text or file, directly from public Archidekt and MTGTop8 URLs, and through a guided Moxfield export fallback when Moxfield blocks automated retrieval.
 - Store, search, copy, edit, select, and validate decks in the browser.
 - Normalize common imported-card issues, including double-faced card names, before XMage validation.
 - Play through a touch-oriented game screen with a prominent current-response banner, legal action badges, prompts, stack, zones, combat, mana, counters, sideboarding, concede, and match-end notices.

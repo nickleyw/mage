@@ -40,7 +40,7 @@ This file tracks the fork-specific `Mage.WebBridge` application. It does not dup
 - Render free-tier Docker Blueprint with health check, generated access token, and reduced-memory JVM settings.
 - Normal XMage connection, lobby listing, constructed-table joining, and event streaming.
 - Local browser deck library with search, edit, copy, selection, paste/file import, and validation.
-- Public deck URL import for Archidekt, Moxfield, and MTGTop8.
+- Public deck URL import for Archidekt and MTGTop8, plus a guided Moxfield export/copy/paste fallback.
 - Initial game-state reduction for players, battlefield, hand, stack, zones, and prompts.
 
 ## Compatibility note

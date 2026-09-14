@@ -38,6 +38,7 @@ import mage.client.components.LegalityLabel;
 import mage.client.constants.Constants.DeckEditorMode;
 import mage.client.deck.generator.DeckGenerator;
 import mage.client.deck.generator.DeckGenerator.DeckGeneratorException;
+import mage.client.deckeditor.importer.DeckUrlImportService;
 import mage.client.dialog.AddLandDialog;
 import mage.client.dialog.PreferencesDialog;
 import mage.client.plugins.impl.Plugins;
@@ -778,12 +779,12 @@ public class DeckEditorPanel extends javax.swing.JPanel {
 
     private void importChoose(java.awt.event.ActionEvent evt) {
 
-        Object[] options = {"From file", "From clipboard (new deck)", "From clipboard (append cards)"};
+        Object[] options = {"From deck URL", "From file", "From clipboard (new deck)", "From clipboard (append cards)"};
 
         int n = JOptionPane.showOptionDialog(MageFrame.getDesktop(),
-                "Choose import location",
-                "Deck import",
-                JOptionPane.YES_NO_CANCEL_OPTION,
+                "Bring a deck into XMage",
+                "Import deck",
+                JOptionPane.DEFAULT_OPTION,
                 JOptionPane.QUESTION_MESSAGE,
                 null,
                 options,
@@ -792,17 +793,69 @@ public class DeckEditorPanel extends javax.swing.JPanel {
 
         switch (n) {
             case 0:
-                importFromFile(evt);
+                importFromUrl();
                 break;
             case 1:
-                importFromClipboard(evt);
+                importFromFile(evt);
                 break;
             case 2:
+                importFromClipboard(evt);
+                break;
+            case 3:
                 importFromClipboardWithAppend(evt);
                 break;
             default:
                 break;
         }
+    }
+
+    private void importFromUrl() {
+        String sourceUrl = JOptionPane.showInputDialog(
+                MageFrame.getDesktop(),
+                "Paste a public Archidekt, Moxfield, or MTGTop8 deck URL:",
+                "Import deck from URL",
+                JOptionPane.PLAIN_MESSAGE
+        );
+        if (sourceUrl == null || sourceUrl.trim().isEmpty()) {
+            return;
+        }
+
+        MageFrame.getDesktop().setCursor(new Cursor(Cursor.WAIT_CURSOR));
+        new SwingWorker<DeckUrlImportService.ImportedDeck, Void>() {
+            @Override
+            protected DeckUrlImportService.ImportedDeck doInBackground() throws Exception {
+                return new DeckUrlImportService().importUrl(sourceUrl);
+            }
+
+            @Override
+            protected void done() {
+                try {
+                    DeckUrlImportService.ImportedDeck imported = get();
+                    String tempDeckPath = DeckUtil.writeTextToTempFile(imported.getText());
+                    if (loadDeck(tempDeckPath, false)) {
+                        String importedName = imported.getName().trim();
+                        deck.setName(importedName.isEmpty() ? imported.getSource() + " deck" : importedName);
+                        refreshDeck(false, true);
+                        JOptionPane.showMessageDialog(
+                                MageFrame.getDesktop(),
+                                "Imported “" + deck.getName() + "” from " + imported.getSource() + ".",
+                                "Deck imported",
+                                JOptionPane.INFORMATION_MESSAGE
+                        );
+                    }
+                } catch (Exception ex) {
+                    Throwable cause = ex.getCause() == null ? ex : ex.getCause();
+                    JOptionPane.showMessageDialog(
+                            MageFrame.getDesktop(),
+                            cause.getMessage(),
+                            "Could not import deck",
+                            JOptionPane.ERROR_MESSAGE
+                    );
+                } finally {
+                    MageFrame.getDesktop().setCursor(new Cursor(Cursor.DEFAULT_CURSOR));
+                }
+            }
+        }.execute();
     }
 
     private void importFromFile(java.awt.event.ActionEvent evt) {

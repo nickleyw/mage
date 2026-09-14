@@ -41,6 +41,10 @@
             <artifactId>guava</artifactId>
         </dependency>
         <dependency>
+            <groupId>com.google.code.gson</groupId>
+            <artifactId>gson</artifactId>
+        </dependency>
+        <dependency>
             <groupId>net.java.truevfs</groupId>
             <artifactId>truevfs-profile-base</artifactId>
         </dependency>

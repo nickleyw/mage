@@ -1,3 +1,6 @@
+> [!IMPORTANT]
+> This fork's `web-bridge-deploy` branch includes **XMage for iPad**, an experimental browser client and Java protocol bridge. See [`Mage.WebBridge/README.md`](Mage.WebBridge/README.md) for its features, architecture, deployment instructions, security model, and current limitations.
+
 # XMage — Magic, Another Game Engine
 
 [![Build Status](https://github.com/magefree/mage/actions/workflows/maven.yml/badge.svg)](https://github.com/magefree/mage/actions/workflows/maven.yml)

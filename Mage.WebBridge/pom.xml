@@ -12,7 +12,8 @@
 
     <artifactId>mage-web-bridge</artifactId>
     <packaging>jar</packaging>
-    <name>XMage Web Bridge Spike</name>
+    <name>XMage Web Bridge</name>
+    <description>Touch-friendly browser client bridge for version-matched XMage servers</description>
 
     <dependencies>
         <dependency>

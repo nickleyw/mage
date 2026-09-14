@@ -1,174 +1,111 @@
-# XMage Web Bridge Spike
+# XMage for iPad
 
-This module tests the riskiest assumption behind an iPad-friendly XMage client:
-can a non-Swing Java process connect to an unmodified XMage server and receive
-the same typed callbacks as the desktop application?
+XMage for iPad is an experimental, touch-friendly web client for XMage. It lets Safari or another modern browser use an ordinary XMage server while the server continues to enforce rules and hidden information.
 
-The module currently:
+The current hosted compatibility build is [xmage-ipad-bridge.onrender.com](https://xmage-ipad-bridge.onrender.com). Access requires the deployment's private bridge token.
 
-- uses XMage's existing `SessionImpl` transport;
-- identifies itself with the exact XMage build version;
-- logs in as a normal player;
-- exposes connect, disconnect, session, and lobby data as JSON;
-- streams typed XMage callback metadata to browsers using Server-Sent Events;
-- includes a responsive, touch-friendly connection and lobby interface;
-- stores a searchable deck library locally in the browser;
-- accepts pasted lists and uploaded text/XMage deck files;
-- imports public Archidekt, Moxfield, and MTGTop8 deck links through allowlisted
-  provider adapters;
-- resolves card names through a compact printing index generated from the
-  matching XMage build and reports unavailable cards;
-- joins and leaves ordinary match and tournament tables using the selected deck;
-- acknowledges XMage's standard game-start handshake and reduces live game
-  updates into a browser-safe battlefield, hand, stack, player, and prompt view;
-- renders XMage's multi-ability picker as touch-sized choices with validated
-  ability IDs and a working cancel action;
-- handles constructed sideboarding between games with tap-to-move card copies,
-  a countdown, and exact-pool validation before the standard deck submission;
-- exposes graveyard, exile, and command-zone cards; floating mana, counters,
-  match score, and the player's priority clock; and
-- provides a confirmed concede-game action through XMage's normal player-action
-  channel;
-- includes a web app manifest, service worker, and iPad Home Screen icon; and
-- retains `HeadlessProbe` as a command-line compatibility check.
+> [!WARNING]
+> This is an early compatibility build, not a replacement for every desktop-client workflow. Expect incomplete card interactions and reconnect edge cases while protocol coverage expands.
 
-It does not yet create tables from the browser, render card artwork, expose
-every unusual game dialog, or support adding basic lands during limited-event
-sideboarding. The current interaction slice covers typed boolean prompts,
-playable-card, target, and ability UUIDs,
-single and validated multi-amount allocations, ordinary text choices, and pile
-selection.
+## What works
 
-## Verified milestone
+- Connect to a normal XMage server; the form shows `beta.xmage.today:17171` as the default option.
+- Browse open tables and join supported constructed games with an imported deck.
+- Import decklists by pasted text, file, or public Archidekt, Moxfield, and MTGTop8 URL.
+- Store, search, copy, edit, select, and validate decks in the browser.
+- Normalize common imported-card issues, including double-faced card names, before XMage validation.
+- Play through a touch-oriented game screen with a prominent current-response banner, legal action badges, prompts, stack, zones, combat, mana, counters, sideboarding, concede, and match-end notices.
+- Preview card images in real time from Scryfall; card images are not bundled in this repository or container.
+- Start a private, unrated **Solo Table** with two ordinary human XMage seats and switch between Player 1 and Player 2.
+- Install the site from Safari using **Share → Add to Home Screen**.
 
-The probe has been verified against the stock server distribution built from
-the same XMage revision. Without changing the server, it successfully:
+## How it fits together
 
-1. opened the standard XMage `bisocket` transport;
-2. logged in as a normal player;
-3. received a session ID and main-room ID; and
-4. fetched the lobby table list.
-
-That validates the proposed boundary: the bridge can speak XMage's existing
-Java protocol toward any version-compatible server while exposing a separate,
-browser-safe API toward an iPad.
-
-The browser API has also been exercised end-to-end against that stock server:
-tokenless access was rejected when authentication was enabled, the authenticated
-client connected, the event stream delivered each connection phase, and the
-lobby snapshot reported the active XMage session. A second stock-server smoke
-test created an ordinary table using a separate client, then verified that the
-bridge could resolve a 60-card deck, join that table, receive the joined-table
-callback, and leave successfully.
-
-A full match-start smoke test has also been completed against the unmodified
-server. A separate ordinary client hosted and joined the table, the bridge
-joined as the second player, the host started the match, and the bridge received
-the standard `START_GAME` and initial game-state callbacks with both players,
-life totals, libraries, turn, and zone data.
-
-The interaction smoke test continued through the live opening sequence. XMage
-asked the bridge player to select a starting player; the bridge rejected an
-illegal response type and a stale message ID, accepted an allowed player UUID,
-then received the opening hand and Mulligan prompt. This verifies the same typed
-response channel used for priority, selections, amounts, and choices.
-
-A best-of-three sideboarding smoke test has also passed against the stock
-server. After game one, the bridge received XMage's real `SIDEBOARD` callback,
-rejected a forged card-copy ID, submitted the unchanged 60-card main deck and
-one-card sideboard through the standard `deckSubmit` call, and advanced toward
-the next game without any server modification.
-
-Run the web bridge from the repository root after building `Mage` and
-`Mage.Common`:
-
-```sh
-mvn -pl Mage.WebBridge -am -DskipTests package
-mvn -pl Mage.WebBridge exec:java \
-  -Dexec.mainClass=mage.webbridge.BridgeServer
+```mermaid
+flowchart LR
+    B["Browser / iPad PWA"] -->|HTTPS + JSON/SSE| W["Mage.WebBridge"]
+    W -->|XMage Java protocol| X["Unmodified XMage server"]
+    B -->|card image requests| S["Scryfall"]
+    W -->|public deck URL import| D["Deck providers"]
 ```
 
-Then open `http://127.0.0.1:8080`. The default binding is deliberately local.
-To make the bridge reachable from another device, bind it to a network
-interface and set an access token:
+The browser never connects to XMage's Java/RMI-style protocol directly. `BridgeServer` exposes a small HTTP API, and `BridgeSession` uses XMage's version-matched `SessionImpl` just like a native client. XMage remains authoritative for legal actions, targeting, game state, and hidden information.
+
+For the detailed component map and request flows, see [ARCHITECTURE.md](ARCHITECTURE.md).
+
+## Repository structure
+
+| Path | Responsibility |
+| --- | --- |
+| `BridgeServer.java` | HTTP routes, bearer-token protection, static files, event stream, primary session, and Solo Table coordination |
+| `BridgeSession.java` | Version-matched XMage session, callbacks, table/game commands, prompts, sideboarding, and snapshots |
+| `GameStateReducer.java` | Converts desktop-oriented `GameView` objects into browser-safe game state |
+| `DeckImportService.java` and provider adapters | Imports public Archidekt, Moxfield, and MTGTop8 deck URLs |
+| `DeckTextResolver.java` | Resolves imported names/sets to XMage card records and prepares decks |
+| `SideboardDeckBuilder.java` | Rebuilds submitted main deck and sideboard selections |
+| `EventBroker.java` | Server-sent event delivery to the browser |
+| `src/main/resources/web/` | HTML, CSS, JavaScript, manifest, service worker, and app icons |
+| `Dockerfile`, `compose.yaml`, `docker-entrypoint.sh` | Container build and local execution |
+| repository-root `render.yaml` | Free-tier Render Blueprint |
+| `src/test/` and `scripts/web-bridge-probes.sh` | Unit and HTTP smoke tests |
+
+## Build and run locally
+
+Prerequisites are the same Java/Maven toolchain required by this XMage checkout, plus Docker if using the container workflow.
 
 ```sh
-XMAGE_BRIDGE_TOKEN="choose-a-long-random-token" mvn -pl Mage.WebBridge exec:java \
-  -Dexec.mainClass=mage.webbridge.BridgeServer \
-  -Dexec.args="0.0.0.0 8080"
+mvn -DskipTests -pl Mage.WebBridge -am install
+mvn -pl Mage.WebBridge test
 ```
 
-Run the original command-line probe with:
+Run with Docker:
 
 ```sh
-mvn -pl Mage.WebBridge exec:java \
-  -Dexec.mainClass=mage.webbridge.HeadlessProbe \
-  -Dexec.args="beta.xmage.today webprobe 17171"
+export XMAGE_BRIDGE_TOKEN="replace-this-with-a-long-random-secret"
+docker compose -f Mage.WebBridge/compose.yaml up --build
 ```
 
-Recent Java runtimes may also require XMage's standard `--add-opens` options
-for legacy JBoss serialization.
+Then open [http://localhost:8080](http://localhost:8080). For direct loopback-only development, the Java main class is `mage.webbridge.BridgeServer`; non-loopback listening requires `XMAGE_BRIDGE_TOKEN`.
 
-The bridge version must match the target server version, just as the desktop
-client's version must match it.
+See [DEPLOYMENT.md](DEPLOYMENT.md) for Render and HTTPS instructions.
 
-## Hosting and iPad installation
+## HTTP surface
 
-The final deployment needs to run this Java bridge as a persistent service
-behind an HTTPS address. The iPad opens that address in Safari; Share > Add to
-Home Screen installs the included standalone web app shell and icon. HTTPS is
-required for service workers and safe remote use.
+All endpoints except health and static assets require the bridge bearer token.
 
-The hosted bridge then makes a normal outbound XMage connection to the server
-address entered in the browser. A friend who already hosts games for remote
-XMage players does not install a plugin or use a different client; their server
-only sees another version-compatible XMage player. The hosting platform keeps
-the bridge process running and supplies HTTPS; an active XMage session remains
-connected only while that process stays online.
+| Endpoint | Purpose |
+| --- | --- |
+| `GET /api/health` | Process health |
+| `POST /api/session/connect` | Connect the primary player to XMage |
+| `GET/DELETE /api/session` | Read state or disconnect all sessions |
+| `GET /api/events` | Live server-sent events |
+| `POST /api/decks/import-url` | Import a supported public deck URL |
+| `POST /api/decks/validate` | Resolve a deck against the bridge's XMage card database |
+| `POST /api/tables/join` and `/leave` | Join or leave a normal table |
+| `POST /api/self-play/start` | Create and join a private two-human Solo Table |
+| `POST /api/self-play/perspective` | Switch the active Solo Table viewpoint |
+| `GET /api/game` | Current browser-safe game snapshot |
+| `POST /api/game/respond` | Answer a current XMage prompt |
+| `POST /api/game/action` | Send a player action such as pass, concede, or rollback |
+| `GET /api/sideboard` and `POST /api/sideboard/submit` | Read and submit sideboarding state |
 
-The repository now includes a production-style container definition and a
-Render Blueprint. The container requires `XMAGE_BRIDGE_TOKEN` and listens on
-the hosting provider's `PORT`. See [DEPLOYMENT.md](DEPLOYMENT.md) for local and
-hosted launch steps.
+## Security and sharing
 
-## Browser API
+- Keep `XMAGE_BRIDGE_TOKEN` secret. It controls the XMage session represented by the bridge.
+- Decks and remembered connection fields are stored in that browser's local storage; card art is requested from Scryfall by the browser.
+- The present process is **single-tenant**: one primary session, plus an optional second session during Solo Table. Sharing the URL and token does not create independent accounts or isolated sessions.
+- For friends to use the app independently or concurrently, deploy separate bridge instances until multi-user isolation is implemented.
+- Use HTTPS in production and allow outbound TCP access to the target XMage port, normally `17171`.
 
-| Method | Path | Purpose |
-| --- | --- | --- |
-| `GET` | `/api/health` | Bridge process health |
-| `POST` | `/api/session/connect` | Connect one player to an XMage server |
-| `GET` | `/api/session` | Current connection and lobby snapshot |
-| `DELETE` | `/api/session` | Disconnect the player |
-| `GET` | `/api/events` | Live bridge/XMage event stream |
-| `POST` | `/api/decks/import-url` | Import an allowlisted public deck URL |
-| `POST` | `/api/decks/validate` | Resolve deck text against this XMage build |
-| `POST` | `/api/tables/join` | Join a lobby table with a resolved deck |
-| `POST` | `/api/tables/leave` | Leave the current lobby table |
-| `GET` | `/api/game` | Latest browser-safe live game state |
-| `POST` | `/api/game/respond` | Send a type-checked response to the current prompt |
-| `POST` | `/api/game/action` | Perform an allowlisted match action such as conceding the current game |
-| `GET` | `/api/sideboard` | Current between-game sideboarding state |
-| `POST` | `/api/sideboard/submit` | Submit an exact-pool-validated sideboard configuration |
+## Known limitations
 
-When `XMAGE_BRIDGE_TOKEN` is configured, send it as a bearer token. XMage
-passwords are passed directly into `SessionImpl` and are not retained in the
-bridge state or returned by the API.
+- XMage client and server versions must match. Rebuild the bridge when the target server upgrades.
+- Not every XMage callback or card-specific interaction has been exercised in the web UI.
+- Drafting, sealed deck construction, tournament creation, and general table creation are not available in the browser. Solo Table is the one supported table-creation path.
+- Solo Table is self-play, not AI: it occupies two ordinary player seats, requires two distinct usernames, and exposes both hands as viewpoints are switched.
+- Public XMage servers may reject joins because of ratings, passwords, table state, or format/deck legality.
+- A free Render instance can sleep or restart, which disconnects active games and may make first load slow.
+- The app is not offline-capable; the PWA shell can install, but play requires the bridge, an XMage server, and network access.
+- Provider sites can change their public export behavior. URL import therefore needs maintenance, especially Moxfield fallbacks.
 
-Decks saved in the interface remain in that browser's local storage. This makes
-the initial library private and account-free. Cloud sync/export can be layered
-on later without making it a prerequisite for playing.
-
-The bundled card index is generated from the same XMage revision, so deck-name
-resolution does not require compiling or loading all 32,000-plus card classes
-on the hosting service. This keeps free-tier builds and runtime memory practical
-while retaining version-matched card names, set codes, and collector numbers.
-
-Direct public-link import is verified for Archidekt and MTGTop8. Moxfield's
-undocumented export endpoint currently rejects bridge requests, so the interface
-gives Moxfield users a concise Export/Copy/Paste fallback while retaining its
-isolated adapter for future compatibility updates.
-
-`TableHostProbe` is a disposable development helper that creates a standard
-two-player Freeform table for join compatibility tests; it is not part of the
-browser's normal workflow. Set `XMAGE_PROBE_SIDEBOARD=true` to create a
-best-of-three match and concede game one for the sideboarding smoke test.
+See [CHANGELOG.md](CHANGELOG.md) for the web-client history. Upstream XMage documentation, licensing, and credits remain at the repository root.
